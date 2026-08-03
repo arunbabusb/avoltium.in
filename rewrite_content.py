@@ -266,6 +266,23 @@ def main() -> None:
     targets = [(pid, "stub") for pid in STUB_POSTS] + \
               [(pid, "syndicated") for pid in SYNDICATED_POSTS]
 
+    # RETRY_POST_IDS lets a follow-up run re-process only the posts that failed
+    # (usually Gemini rate limits) without touching posts already rewritten.
+    # This matters because a full re-run would overwrite content_backup.json
+    # with already-rewritten bodies, destroying the only copy of the originals.
+    retry_raw = os.environ.get("RETRY_POST_IDS", "").strip()
+    if retry_raw:
+        wanted = {int(x) for x in re.findall(r"\d+", retry_raw)}
+        targets = [(pid, mode) for pid, mode in targets if pid in wanted]
+        unknown = wanted - {pid for pid, _ in targets}
+        if unknown:
+            print(f"WARNING: ignoring IDs not in target lists: {sorted(unknown)}", flush=True)
+        print(f"RETRY MODE — only posts {sorted(p for p, _ in targets)}", flush=True)
+
+    if not targets:
+        print("Nothing to do.", flush=True)
+        return
+
     print(f"Processing {len(targets)} posts\n", flush=True)
     for pid, mode in targets:
         print(f"--- post {pid} ---", flush=True)
@@ -277,11 +294,15 @@ def main() -> None:
         # Stay well inside Gemini free-tier rate limits
         time.sleep(5)
 
-    with open("content_backup.json", "w", encoding="utf-8") as fh:
+    # Distinct filename per retry run so a retry never clobbers the backup
+    # holding the true pre-rewrite originals.
+    backup_name = f"content_backup_retry_{'_'.join(str(p) for p, _ in targets)}.json" \
+        if retry_raw else "content_backup.json"
+    with open(backup_name, "w", encoding="utf-8") as fh:
         json.dump(backup, fh, indent=2, ensure_ascii=False)
 
     print(f"\nRewrote {done}/{len(targets)} posts.", flush=True)
-    print(f"Originals backed up for {len(backup)} posts in content_backup.json", flush=True)
+    print(f"Originals backed up for {len(backup)} posts in {backup_name}", flush=True)
 
 
 if __name__ == "__main__":

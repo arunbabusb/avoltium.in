@@ -1,7 +1,15 @@
 name: Rewrite Thin and Syndicated Content (One-Time)
 
 on:
-  workflow_dispatch:  # Manual trigger only
+  workflow_dispatch:
+    inputs:
+      retry_post_ids:
+        description: >-
+          Optional comma-separated post IDs to re-process (e.g. "279,172").
+          Leave blank to process every target post. Use this to retry posts
+          that failed on an earlier run without rewriting the rest.
+        required: false
+        default: ''
 
 jobs:
   rewrite:
@@ -25,6 +33,7 @@ jobs:
           WP_USERNAME: ${{ secrets.WP_USERNAME }}
           WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          RETRY_POST_IDS: ${{ inputs.retry_post_ids }}
         run: python rewrite_content.py
 
       # The backup is the only copy of the original bodies — keep it even if
@@ -33,6 +42,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: content-backup
-          path: content_backup.json
+          name: content-backup-${{ github.run_id }}
+          path: content_backup*.json
           retention-days: 90
