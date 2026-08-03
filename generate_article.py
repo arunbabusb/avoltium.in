@@ -204,10 +204,13 @@ def fetch_contextual_image(topic: str) -> bytes | None:
 
     print(f"Generating contextual image for: {topic}", flush=True)
     encoded_prompt = urllib.parse.quote(image_prompt)
-    # FLUX model produces significantly more photorealistic results than the default
+    # FLUX model produces significantly more photorealistic results than the default.
+    # Random seed prevents Pollinations from serving the same cached image every
+    # time a topic repeats — without it, identical prompts return identical images.
+    seed = random.randint(1, 999_999)
     img_url = (
         f"https://image.pollinations.ai/prompt/{encoded_prompt}"
-        f"?width=1200&height=675&nologo=true&model=flux"
+        f"?width=1200&height=675&nologo=true&model=flux&seed={seed}"
     )
 
     try:
