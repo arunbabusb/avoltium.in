@@ -1,12 +1,10 @@
-name: Publish Article to WordPress
+name: Fix Existing Articles (One-Time)
 
 on:
-  schedule:
-    - cron: '0 6 * * *'  # Runs daily at 6:00 AM UTC
-  workflow_dispatch:       # Allows manual trigger from GitHub Actions UI
+  workflow_dispatch:  # Manual trigger only — run once then done
 
 jobs:
-  publish:
+  fix:
     runs-on: ubuntu-latest
 
     steps:
@@ -21,10 +19,9 @@ jobs:
       - name: Install dependencies
         run: pip install requests python-dotenv
 
-      - name: Run article generator
+      - name: Run article fixer
         env:
           WP_URL: ${{ secrets.WP_URL }}
           WP_USERNAME: ${{ secrets.WP_USERNAME }}
           WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        run: python generate_article.py
+        run: python fix_articles.py
