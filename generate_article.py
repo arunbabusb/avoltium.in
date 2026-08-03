@@ -12,6 +12,8 @@ import re
 import urllib.parse
 from dotenv import load_dotenv
 
+import qc_check
+
 load_dotenv()
 
 WP_URL = os.environ.get("WP_URL", "https://www.avoltium.in").rstrip("/")
@@ -577,13 +579,39 @@ html_content = re.sub(
     count=2,
 )
 
-# 5. Publish to WordPress with topic-specific categories and SEO excerpt
+# 5. Quality gate — a defective article is held as a draft rather than
+#    published, so readers and Googlebot never see it. Every rule in
+#    qc_check exists because that defect once shipped live.
+qc_media = None
+if featured_media_id:
+    qc_media = {
+        "alt_text": topic,
+        "media_details": {"width": 1200, "height": 675},
+    }
+
+issues = qc_check.check_post(post_title, html_content, qc_media)
+fatal = qc_check.blockers(issues)
+for severity, message in issues:
+    print(f"  QC {severity}: {message}", flush=True)
+
+publish_status = "publish"
+if fatal:
+    publish_status = "draft"
+    print(
+        f"QC FAILED ({len(fatal)} blockers) — saving as DRAFT for human review "
+        "instead of publishing.",
+        flush=True,
+    )
+else:
+    print("QC passed.", flush=True)
+
+# 6. Publish to WordPress with topic-specific categories and SEO excerpt
 categories = (TOPICS.get(topic) or {}).get("categories", [12])
-print(f"Publishing to WordPress (categories: {categories})...", flush=True)
+print(f"Sending to WordPress as '{publish_status}' (categories: {categories})...", flush=True)
 payload = {
     "title": post_title,
     "content": html_content,
-    "status": "publish",
+    "status": publish_status,
     "categories": categories,
     "excerpt": make_excerpt(html_content),
 }
@@ -600,9 +628,15 @@ wp_res = requests.post(
 if wp_res.status_code == 201:
     post_id = wp_res.json()["id"]
     print(
-        f"SUCCESS: '{topic}' published (Post ID: {post_id}, Media ID: {featured_media_id}).",
+        f"SUCCESS: '{post_title}' saved as {publish_status} "
+        f"(Post ID: {post_id}, Media ID: {featured_media_id}).",
         flush=True,
     )
+    # Non-zero exit makes the workflow run go red so a held draft is visible
+    # in the Actions tab instead of passing silently.
+    if publish_status == "draft":
+        print("Review the draft in WordPress before publishing.", flush=True)
+        exit(1)
 else:
     print(f"ERROR: Publish failed — HTTP {wp_res.status_code}", flush=True)
     print(wp_res.text[:500], flush=True)
