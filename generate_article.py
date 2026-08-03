@@ -27,61 +27,92 @@ if not all([WP_URL, WP_USERNAME, WP_APP_PASSWORD, GEMINI_API_KEY]):
 auth = (WP_USERNAME, WP_APP_PASSWORD)
 headers = {"Content-Type": "application/json"}
 
-# Each topic is paired with a highly specific image prompt so the featured
-# image shows the actual equipment/system being discussed — not a generic
-# "green energy facility" render.
+# Each topic maps to:
+#   - image_prompt : highly specific photorealistic Pollinations prompt
+#   - categories   : WordPress category IDs (from site's category list)
+#
+# WP category IDs:
+#   8  = Electrolyzer Technology
+#   9  = Balance of Plant (BOP)
+#   10 = Green Hydrogen
+#   12 = Technical Articles
+#   15 = Water Treatment Systems
 TOPICS = {
-    "Next-Generation PEM Electrolyzer Architectures and Efficiency Gains": (
-        "PEM proton exchange membrane electrolyzer stack cutaway cross-section, "
-        "showing iridium oxide anode catalyst layer, Nafion membrane, platinum cathode, "
-        "titanium porous transport layer PTL, bipolar flow field plates, "
-        "professional industrial product photography, photorealistic, white studio background, "
-        "ultra high detail, engineering precision"
-    ),
-    "Alkaline vs PEM Electrolysis: Scaling for Gigawatt Green Hydrogen Projects": (
-        "large scale industrial alkaline electrolyzer plant interior, "
-        "tall cylindrical bipolar electrolytic cells KOH solution, "
-        "stainless steel piping manifolds diaphragm separators, "
-        "side-by-side with compact PEM electrolyzer stack, "
-        "professional engineering photography, photorealistic industrial facility"
-    ),
-    "Ultrapure Water Demand and Reverse Osmosis (RO) Optimization in Hydrogen Hubs": (
-        "industrial reverse osmosis water treatment skid for green hydrogen plant, "
-        "rows of white cylindrical RO pressure vessels with blue end caps, "
-        "high-pressure centrifugal pumps, electrodeionization EDI polishing unit, "
-        "ultrapure water conductivity analyzers, stainless steel piping, "
-        "professional industrial photography, photorealistic"
-    ),
-    "Balance of Plant (BOP) Strategies for Large-Scale Green Hydrogen Facilities": (
-        "green hydrogen facility balance of plant BOP equipment skid, "
-        "industrial centrifugal pumps heat exchangers pressure vessels piping manifolds "
-        "control valves instrumentation transmitters, P&ID diagram visible, "
-        "complex industrial piping and equipment, professional engineering photography, photorealistic"
-    ),
-    "Cooling Systems and Thermal Management in Industrial Electrolyzers": (
-        "industrial plate heat exchanger and cooling tower system for electrolyzer thermal management, "
-        "large stainless steel gasketed plate heat exchangers, cooling water pumps, "
-        "expansion vessels, temperature and flow instrumentation, "
-        "industrial facility background, professional engineering photography, photorealistic"
-    ),
-    "Grid Integration and Renewable Energy Coupling for Intermittent Electrolysis": (
-        "solar photovoltaic farm and offshore wind turbines connected to green hydrogen "
-        "electrolysis plant, high-voltage transmission lines, power electronics rectifiers inverters, "
-        "step-down transformers, aerial drone view of hybrid energy facility, "
-        "professional industrial photography, photorealistic"
-    ),
-    "Compressor Technologies for High-Pressure Green Hydrogen Storage": (
-        "industrial diaphragm compressor for high-pressure hydrogen gas compression, "
-        "metal diaphragm compressor head with stainless steel housing, crankcase assembly, "
-        "high-pressure hydrogen piping fittings pressure gauges safety relief valves, "
-        "350 bar 700 bar storage system, professional industrial product photography, photorealistic"
-    ),
-    "Materials Engineering for Electrolyzer Degradation Mitigation": (
-        "scanning electron microscope SEM micrograph of PEM electrolyzer membrane electrode assembly MEA, "
-        "iridium catalyst nanoparticles on carbon support Nafion ionomer, "
-        "platinum cathode degradation cracks, high-magnification scientific materials research image, "
-        "realistic laboratory electron microscopy photography"
-    ),
+    "Next-Generation PEM Electrolyzer Architectures and Efficiency Gains": {
+        "image_prompt": (
+            "PEM proton exchange membrane electrolyzer stack cutaway cross-section, "
+            "showing iridium oxide anode catalyst layer, Nafion membrane, platinum cathode, "
+            "titanium porous transport layer PTL, bipolar flow field plates, "
+            "professional industrial product photography, photorealistic, white studio background, "
+            "ultra high detail, engineering precision"
+        ),
+        "categories": [8, 12],
+    },
+    "Alkaline vs PEM Electrolysis: Scaling for Gigawatt Green Hydrogen Projects": {
+        "image_prompt": (
+            "large scale industrial alkaline electrolyzer plant interior, "
+            "tall cylindrical bipolar electrolytic cells KOH solution, "
+            "stainless steel piping manifolds diaphragm separators, "
+            "side-by-side with compact PEM electrolyzer stack, "
+            "professional engineering photography, photorealistic industrial facility"
+        ),
+        "categories": [8, 10, 12],
+    },
+    "Ultrapure Water Demand and Reverse Osmosis (RO) Optimization in Hydrogen Hubs": {
+        "image_prompt": (
+            "industrial reverse osmosis water treatment skid for green hydrogen plant, "
+            "rows of white cylindrical RO pressure vessels with blue end caps, "
+            "high-pressure centrifugal pumps, electrodeionization EDI polishing unit, "
+            "ultrapure water conductivity analyzers, stainless steel piping, "
+            "professional industrial photography, photorealistic"
+        ),
+        "categories": [15, 12],
+    },
+    "Balance of Plant (BOP) Strategies for Large-Scale Green Hydrogen Facilities": {
+        "image_prompt": (
+            "green hydrogen facility balance of plant BOP equipment skid, "
+            "industrial centrifugal pumps heat exchangers pressure vessels piping manifolds "
+            "control valves instrumentation transmitters, P&ID diagram visible, "
+            "complex industrial piping and equipment, professional engineering photography, photorealistic"
+        ),
+        "categories": [9, 12],
+    },
+    "Cooling Systems and Thermal Management in Industrial Electrolyzers": {
+        "image_prompt": (
+            "industrial plate heat exchanger and cooling tower system for electrolyzer thermal management, "
+            "large stainless steel gasketed plate heat exchangers, cooling water pumps, "
+            "expansion vessels, temperature and flow instrumentation, "
+            "industrial facility background, professional engineering photography, photorealistic"
+        ),
+        "categories": [8, 12],
+    },
+    "Grid Integration and Renewable Energy Coupling for Intermittent Electrolysis": {
+        "image_prompt": (
+            "solar photovoltaic farm and offshore wind turbines connected to green hydrogen "
+            "electrolysis plant, high-voltage transmission lines, power electronics rectifiers inverters, "
+            "step-down transformers, aerial drone view of hybrid energy facility, "
+            "professional industrial photography, photorealistic"
+        ),
+        "categories": [10, 12],
+    },
+    "Compressor Technologies for High-Pressure Green Hydrogen Storage": {
+        "image_prompt": (
+            "industrial diaphragm compressor for high-pressure hydrogen gas compression, "
+            "metal diaphragm compressor head with stainless steel housing, crankcase assembly, "
+            "high-pressure hydrogen piping fittings pressure gauges safety relief valves, "
+            "350 bar 700 bar storage system, professional industrial product photography, photorealistic"
+        ),
+        "categories": [12],
+    },
+    "Materials Engineering for Electrolyzer Degradation Mitigation": {
+        "image_prompt": (
+            "scanning electron microscope SEM micrograph of PEM electrolyzer membrane electrode assembly MEA, "
+            "iridium catalyst nanoparticles on carbon support Nafion ionomer, "
+            "platinum cathode degradation cracks, high-magnification scientific materials research image, "
+            "realistic laboratory electron microscopy photography"
+        ),
+        "categories": [8, 12],
+    },
 }
 
 # CSS property names that Gemini sometimes outputs without hyphens
@@ -166,7 +197,7 @@ def sanitize_content(html: str) -> str:
 
 def fetch_contextual_image(topic: str) -> bytes | None:
     """Generate a topic-specific, photorealistic image via Pollinations FLUX."""
-    image_prompt = TOPICS.get(topic) or (
+    image_prompt = (TOPICS.get(topic) or {}).get("image_prompt") or (
         f"professional industrial photograph, {topic}, green hydrogen technology facility, "
         "photorealistic, high detail engineering"
     )
@@ -315,13 +346,14 @@ html_content = re.sub(
     count=2,
 )
 
-# 5. Publish to WordPress (Category 12 = Technical Articles)
-print("Publishing to WordPress...", flush=True)
+# 5. Publish to WordPress with topic-specific categories
+categories = (TOPICS.get(topic) or {}).get("categories", [12])
+print(f"Publishing to WordPress (categories: {categories})...", flush=True)
 payload = {
     "title": topic,
     "content": html_content,
     "status": "publish",
-    "categories": [12],
+    "categories": categories,
 }
 if featured_media_id:
     payload["featured_media"] = featured_media_id
