@@ -1,0 +1,31 @@
+name: Weekly Quality Audit
+
+on:
+  schedule:
+    - cron: '17 6 * * 1'  # Mondays 06:17 UTC, after the Monday article publishes
+  workflow_dispatch:
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install requests python-dotenv
+
+      # Fails the run when any BLOCKER is found, so the Actions tab shows red
+      # and the details are in the log.
+      - name: Audit published posts against editorial standards
+        env:
+          WP_URL: ${{ secrets.WP_URL }}
+          WP_USERNAME: ${{ secrets.WP_USERNAME }}
+          WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
+        run: python qc_check.py
