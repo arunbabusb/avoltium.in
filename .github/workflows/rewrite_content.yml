@@ -1,0 +1,38 @@
+name: Rewrite Thin and Syndicated Content (One-Time)
+
+on:
+  workflow_dispatch:  # Manual trigger only
+
+jobs:
+  rewrite:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install requests python-dotenv
+
+      - name: Rewrite content
+        env:
+          WP_URL: ${{ secrets.WP_URL }}
+          WP_USERNAME: ${{ secrets.WP_USERNAME }}
+          WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: python rewrite_content.py
+
+      # The backup is the only copy of the original bodies — keep it even if
+      # the rewrite step fails partway through.
+      - name: Upload original-content backup
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: content-backup
+          path: content_backup.json
+          retention-days: 90
