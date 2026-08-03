@@ -2,8 +2,7 @@
 # requires-python = ">=3.11"
 # dependencies = [
 #     "requests",
-#     "python-dotenv",
-#     "beautifulsoup4"
+#     "python-dotenv"
 # ]
 # ///
 import os
@@ -37,6 +36,7 @@ headers = {"Content-Type": "application/json"}
 #   10 = Green Hydrogen
 #   12 = Technical Articles
 #   15 = Water Treatment Systems
+#   29 = Pumps & Valves
 TOPICS = {
     "Next-Generation PEM Electrolyzer Architectures and Efficiency Gains": {
         "image_prompt": (
@@ -112,6 +112,166 @@ TOPICS = {
             "realistic laboratory electron microscopy photography"
         ),
         "categories": [8, 12],
+    },
+    "Centrifugal vs Diaphragm Pumps for Electrolyte Circulation in Alkaline Electrolyzers": {
+        "image_prompt": (
+            "industrial centrifugal pump and diaphragm metering pump side by side on skid, "
+            "stainless steel casings, KOH electrolyte circulation piping, pressure gauges, "
+            "mechanical seals, professional industrial product photography, photorealistic"
+        ),
+        "categories": [29, 8, 12],
+    },
+    "Control Valve Selection and Sizing for High-Purity Hydrogen Service": {
+        "image_prompt": (
+            "precision control valves for hydrogen gas service, stainless steel globe valve "
+            "with pneumatic actuator and positioner, high-purity gas piping installation, "
+            "instrumentation, professional industrial product photography, photorealistic"
+        ),
+        "categories": [29, 12],
+    },
+    "Electrodeionization (EDI) vs Mixed-Bed Polishing for Electrolyzer Feedwater": {
+        "image_prompt": (
+            "electrodeionization EDI modules and mixed-bed ion exchange polishing vessels in "
+            "ultrapure water treatment room, resistivity meters, stainless piping, "
+            "clean industrial water plant, professional photography, photorealistic"
+        ),
+        "categories": [15, 12],
+    },
+    "Hydrogen Gas Drying Technologies: PSA, TSA and Membrane Dehumidification": {
+        "image_prompt": (
+            "twin tower pressure swing adsorption PSA hydrogen gas dryer skid with desiccant "
+            "vessels, switching valves, dew point analyzers, industrial gas processing plant, "
+            "professional engineering photography, photorealistic"
+        ),
+        "categories": [10, 12],
+    },
+    "Stack Lifetime Extension: Voltage Cycling Protocols and Degradation Diagnostics": {
+        "image_prompt": (
+            "electrolyzer stack test bench with electrical measurement instrumentation, "
+            "voltage monitoring cables on cell terminals, data acquisition system screens showing "
+            "polarization curves, laboratory test facility, professional photography, photorealistic"
+        ),
+        "categories": [8, 12],
+    },
+    "Oxygen Side Management and Safety Systems in Large Electrolyzer Plants": {
+        "image_prompt": (
+            "industrial oxygen gas handling system at electrolyzer plant, gas-liquid separator "
+            "vessels, flame arrestors, oxygen analyzers, safety relief valves, vent stacks, "
+            "professional industrial photography, photorealistic"
+        ),
+        "categories": [8, 9, 12],
+    },
+    "Seawater Desalination Integration for Coastal Green Hydrogen Projects": {
+        "image_prompt": (
+            "coastal seawater desalination plant feeding green hydrogen facility, reverse osmosis "
+            "trains, seawater intake structures, ocean in background with wind turbines, "
+            "aerial industrial photography, photorealistic"
+        ),
+        "categories": [15, 10, 12],
+    },
+    "AEM Electrolyzers: Bridging the Cost Gap Between Alkaline and PEM": {
+        "image_prompt": (
+            "compact anion exchange membrane AEM electrolyzer module, modern laboratory prototype "
+            "stack with polymer membrane cells, nickel-based electrodes, clean tech workshop, "
+            "professional product photography, photorealistic"
+        ),
+        "categories": [8, 12],
+    },
+    "Hydrogen Leak Detection and Ventilation Design for Indoor Electrolyzer Rooms": {
+        "image_prompt": (
+            "hydrogen safety instrumentation in industrial electrolyzer room, gas detector heads "
+            "mounted near ceiling, ventilation ducting, emergency shutoff panels, ATEX rated "
+            "equipment, professional industrial photography, photorealistic"
+        ),
+        "categories": [9, 12],
+    },
+    "Power Electronics for Electrolysis: Rectifier Topologies and Harmonic Mitigation": {
+        "image_prompt": (
+            "high-current thyristor rectifier cabinets for electrolysis plant power supply, "
+            "busbars, transformer connections, power electronics hall, electrical engineering "
+            "installation, professional industrial photography, photorealistic"
+        ),
+        "categories": [9, 12],
+    },
+    "Waste Heat Recovery from Electrolyzers for District Heating and Process Use": {
+        "image_prompt": (
+            "industrial waste heat recovery system with plate heat exchangers and insulated hot "
+            "water piping connecting electrolyzer plant to district heating network, pumps and "
+            "control valves, professional engineering photography, photorealistic"
+        ),
+        "categories": [9, 10, 12],
+    },
+    "Green Ammonia Synthesis: Coupling Haber-Bosch with Intermittent Electrolysis": {
+        "image_prompt": (
+            "green ammonia synthesis plant with Haber-Bosch reactor columns, high-pressure "
+            "synthesis loop piping, ammonia storage spheres, adjacent electrolyzer building and "
+            "renewable energy, aerial industrial photography, photorealistic"
+        ),
+        "categories": [10, 12],
+    },
+    "Water Quality Monitoring Instrumentation for Ultrapure Electrolyzer Feed": {
+        "image_prompt": (
+            "online water quality analyzer panel with conductivity resistivity TOC and silica "
+            "analyzers, sample lines, digital displays, ultrapure water plant instrumentation, "
+            "professional industrial photography, photorealistic"
+        ),
+        "categories": [15, 12],
+    },
+    "Bipolar Plate Materials and Coatings: Titanium, Stainless and Beyond": {
+        "image_prompt": (
+            "precision machined titanium bipolar plates for electrolyzer stack with flow field "
+            "channels, gold and platinum coated samples, metallurgical laboratory setting, "
+            "macro product photography, photorealistic, high detail"
+        ),
+        "categories": [8, 12],
+    },
+    "Hydrogen Storage Options Compared: Compressed Gas, Liquid and Metal Hydrides": {
+        "image_prompt": (
+            "hydrogen storage comparison scene, high-pressure composite cylinders, cryogenic "
+            "liquid hydrogen tank, metal hydride storage modules, industrial gas facility, "
+            "professional industrial photography, photorealistic"
+        ),
+        "categories": [10, 12],
+    },
+    "Electrolyzer Plant Commissioning: FAT, SAT and Performance Test Protocols": {
+        "image_prompt": (
+            "engineers commissioning electrolyzer plant, checking instrumentation and control "
+            "panels, test documentation, industrial control room and plant floor, "
+            "professional engineering photography, photorealistic"
+        ),
+        "categories": [9, 12],
+    },
+    "LCOH Deep Dive: Sensitivity of Hydrogen Cost to Electricity Price and Capacity Factor": {
+        "image_prompt": (
+            "green hydrogen plant at sunset with solar farm and transmission lines, "
+            "large industrial electrolyzer buildings, economic energy infrastructure scene, "
+            "aerial photography, photorealistic"
+        ),
+        "categories": [10, 12],
+    },
+    "Membrane Technologies in Water Treatment: UF, RO and EDI Train Design for Hydrogen Plants": {
+        "image_prompt": (
+            "complete membrane water treatment train, ultrafiltration modules, reverse osmosis "
+            "pressure vessels, EDI stacks in series, stainless steel piping and instrumentation, "
+            "modern water treatment hall, professional photography, photorealistic"
+        ),
+        "categories": [15, 12],
+    },
+    "Gasket and Sealing Technology for High-Pressure Alkaline Stacks": {
+        "image_prompt": (
+            "industrial gaskets and sealing components for electrolyzer cell stack assembly, "
+            "PTFE and elastomer gaskets, flange faces, torque tools, assembly workshop bench, "
+            "macro product photography, photorealistic"
+        ),
+        "categories": [8, 29, 12],
+    },
+    "Piping Material Selection for Hydrogen Service: Embrittlement and Code Compliance": {
+        "image_prompt": (
+            "stainless steel hydrogen piping installation with orbital welded joints, pipe "
+            "supports, material test certificates, ASME code stamped spools, industrial "
+            "construction site, professional photography, photorealistic"
+        ),
+        "categories": [9, 29, 12],
     },
 }
 
@@ -225,7 +385,7 @@ def fetch_contextual_image(topic: str) -> bytes | None:
 
 
 def upload_image_to_wp(image_bytes: bytes, topic: str) -> int | None:
-    """Upload image bytes to WordPress Media Library, return media ID or None."""
+    """Upload image bytes to WordPress Media Library with alt text, return media ID."""
     filename = f"featured_{random.randint(1000, 9999)}.jpg"
     media_headers = {
         "Content-Type": "image/jpeg",
@@ -241,12 +401,78 @@ def upload_image_to_wp(image_bytes: bytes, topic: str) -> int | None:
         )
         if res.status_code == 201:
             media_id = res.json()["id"]
+            # Alt text for SEO and accessibility
+            requests.post(
+                f"{WP_URL}/wp-json/wp/v2/media/{media_id}",
+                auth=auth,
+                json={"alt_text": topic, "title": topic},
+                timeout=30,
+            )
             print(f"Image uploaded — Media ID: {media_id}", flush=True)
             return media_id
         print(f"Image upload failed: HTTP {res.status_code} — {res.text[:200]}", flush=True)
     except Exception as e:
         print(f"Image upload error: {e}", flush=True)
     return None
+
+
+def _normalize_title(t: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", t.lower())
+
+
+def fetch_existing_titles() -> set[str]:
+    """Fetch all existing post titles (any status) to avoid duplicate topics."""
+    titles, page = set(), 1
+    while True:
+        try:
+            res = requests.get(
+                f"{WP_URL}/wp-json/wp/v2/posts",
+                params={"per_page": 100, "page": page, "status": "publish,draft,pending,future",
+                        "_fields": "title"},
+                auth=auth,
+                timeout=30,
+            )
+            if res.status_code != 200:
+                break
+            batch = res.json()
+            if not batch:
+                break
+            for p in batch:
+                titles.add(_normalize_title(p["title"]["rendered"]))
+            if len(batch) < 100:
+                break
+            page += 1
+        except Exception as e:
+            print(f"Title fetch error: {e}", flush=True)
+            break
+    return titles
+
+
+def pick_topic() -> tuple[str, str]:
+    """Pick a topic not yet covered on the site.
+
+    Returns (topic_key, post_title). If every topic already has an article,
+    reuse a random topic with a dated 'Engineering Review' title so the post
+    title is still unique.
+    """
+    existing = fetch_existing_titles()
+    unused = [t for t in TOPICS if _normalize_title(t) not in existing]
+    if unused:
+        topic = random.choice(unused)
+        return topic, topic
+    import datetime
+    topic = random.choice(list(TOPICS.keys()))
+    stamp = datetime.date.today().strftime("%B %Y")
+    return topic, f"{topic}: {stamp} Engineering Review"
+
+
+def make_excerpt(html: str) -> str:
+    """Meta-description-length excerpt from the Engineering Insight box."""
+    m = re.search(r"Engineering Insight:</strong>\s*(.*?)</div>", html, re.S)
+    text = m.group(1) if m else html
+    text = re.sub(r"<[^>]+>", "", text).strip()
+    text = re.sub(r"\s+", " ", text)
+    return text[:152] + "..." if len(text) > 155 else text
 
 
 def build_gemini_prompt(topic: str) -> str:
@@ -295,8 +521,10 @@ Write a highly technical, professional 1,200-word engineering article on: "{topi
 
 # ─── Main ────────────────────────────────────────────────────────────────────
 
-topic = random.choice(list(TOPICS.keys()))
+topic, post_title = pick_topic()
 print(f"Selected topic: {topic}", flush=True)
+if post_title != topic:
+    print(f"All topics covered — publishing dated review: {post_title}", flush=True)
 
 # 1. Generate contextual featured image
 featured_media_id = None
@@ -349,14 +577,15 @@ html_content = re.sub(
     count=2,
 )
 
-# 5. Publish to WordPress with topic-specific categories
+# 5. Publish to WordPress with topic-specific categories and SEO excerpt
 categories = (TOPICS.get(topic) or {}).get("categories", [12])
 print(f"Publishing to WordPress (categories: {categories})...", flush=True)
 payload = {
-    "title": topic,
+    "title": post_title,
     "content": html_content,
     "status": "publish",
     "categories": categories,
+    "excerpt": make_excerpt(html_content),
 }
 if featured_media_id:
     payload["featured_media"] = featured_media_id
