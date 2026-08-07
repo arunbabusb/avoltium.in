@@ -58,6 +58,21 @@ SYNDICATED_POSTS = [
     172, 170, 168, 166, 164,
 ]
 
+# Drafts surfaced by recover_drafts.py on 7 Aug 2026. These were already held
+# by the QC gate for editorial faults a rewrite fixes, so they belong in the
+# same remediation. Kept in their own lists so it stays clear which batch a
+# post came from and what the QC gate actually complained about.
+HELD_DRAFT_STUBS = [
+    413,  # "27 Hydrogen trade" — body is completely empty (0 chars)
+    268,  # 168 chars
+    267,  # 211 chars
+]
+HELD_DRAFT_SYNDICATED = [
+    174,  # 1,878 chars — under the 2,500 minimum
+    273,  # LaTeX in body ($…$); news roundup
+    317,  # LaTeX in body (\text{}); "As told to Parliament" newswire copy
+]
+
 MODELS = ["gemini-2.0-flash", "gemini-flash-latest", "gemini-2.0-flash-lite"]
 
 _CSS_FIXES = {
@@ -186,12 +201,16 @@ def make_excerpt(html: str) -> str:
 
 
 def process(post_id: int, mode: str, backup: dict) -> bool:
-    res = requests.get(
+    res = resilient.request_with_retry(
+        "GET",
         f"{WP_URL}/wp-json/wp/v2/posts/{post_id}",
+        attempts=3,
+        label=f"wp/fetch/{post_id}",
         params={"context": "edit"}, auth=auth, timeout=30,
     )
-    if res.status_code != 200:
-        print(f"  fetch failed: HTTP {res.status_code}", flush=True)
+    if res is None or res.status_code != 200:
+        status = res.status_code if res is not None else "no response"
+        print(f"  fetch failed: {status}", flush=True)
         return False
 
     data = res.json()
@@ -227,25 +246,29 @@ def process(post_id: int, mode: str, backup: dict) -> bool:
         body, count=1,
     )
 
-    upd = requests.post(
+    upd = resilient.request_with_retry(
+        "POST",
         f"{WP_URL}/wp-json/wp/v2/posts/{post_id}",
+        attempts=3,
+        label=f"wp/update/{post_id}",
         auth=auth,
         json={"content": body, "excerpt": make_excerpt(body)},
         timeout=60,
     )
-    if upd.status_code == 200:
+    if upd is not None and upd.status_code == 200:
         print(f"  OK — {len(plain_text(body))} chars of original content", flush=True)
         return True
 
-    print(f"  UPDATE FAILED: HTTP {upd.status_code}", flush=True)
+    status = upd.status_code if upd is not None else "no response"
+    print(f"  UPDATE FAILED: {status}", flush=True)
     return False
 
 
 def main() -> None:
     backup: dict = {}
     done = 0
-    targets = [(pid, "stub") for pid in STUB_POSTS] + \
-              [(pid, "syndicated") for pid in SYNDICATED_POSTS]
+    targets = [(pid, "stub") for pid in STUB_POSTS + HELD_DRAFT_STUBS] + \
+              [(pid, "syndicated") for pid in SYNDICATED_POSTS + HELD_DRAFT_SYNDICATED]
 
     # RETRY_POST_IDS lets a follow-up run re-process only the posts that failed
     # (usually Gemini rate limits) without touching posts already rewritten.
