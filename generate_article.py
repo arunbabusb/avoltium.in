@@ -13,6 +13,7 @@ import urllib.parse
 from dotenv import load_dotenv
 
 import qc_check
+import resilient
 
 load_dotenv()
 
@@ -20,6 +21,18 @@ WP_URL = os.environ.get("WP_URL", "https://www.avoltium.in").rstrip("/")
 WP_USERNAME = os.environ.get("WP_USERNAME")
 WP_APP_PASSWORD = os.environ.get("WP_APP_PASSWORD")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+
+# Optional: an AdSense display-unit slot ID. When set, one in-article unit is
+# placed mid-body. Left unset, posts carry no manual unit and monetization
+# falls back to Auto Ads alone — which is how every existing post is served.
+ADSENSE_CLIENT = os.environ.get("ADSENSE_CLIENT", "ca-pub-8459363476525914")
+ADSENSE_SLOT_ID = os.environ.get("ADSENSE_SLOT_ID", "").strip()
+
+# Pollinations is the flakiest dependency in the pipeline and a missing image
+# is a QC blocker, so it gets the most attempts.
+IMAGE_ATTEMPTS = 4
+# Anything smaller than this is an error page or a stub, not a 1200x675 photo.
+MIN_IMAGE_BYTES = 10_000
 
 if not all([WP_URL, WP_USERNAME, WP_APP_PASSWORD, GEMINI_API_KEY]):
     print("ERROR: Missing required environment variables (WP_URL, WP_USERNAME, WP_APP_PASSWORD, GEMINI_API_KEY).", flush=True)
@@ -358,7 +371,12 @@ def sanitize_content(html: str) -> str:
 
 
 def fetch_contextual_image(topic: str) -> bytes | None:
-    """Generate a topic-specific, photorealistic image via Pollinations FLUX."""
+    """Generate a topic-specific, photorealistic image via Pollinations FLUX.
+
+    Tried IMAGE_ATTEMPTS times with backoff. A single HTTP 500 here used to be
+    enough to lose an entire publish slot: no image trips the QC image rule,
+    which is a BLOCKER, which parks the finished article as a draft.
+    """
     image_prompt = (TOPICS.get(topic) or {}).get("image_prompt") or (
         f"professional industrial photograph, {topic}, green hydrogen technology facility, "
         "photorealistic, high detail engineering"
@@ -366,24 +384,84 @@ def fetch_contextual_image(topic: str) -> bytes | None:
 
     print(f"Generating contextual image for: {topic}", flush=True)
     encoded_prompt = urllib.parse.quote(image_prompt)
-    # FLUX model produces significantly more photorealistic results than the default.
-    # Random seed prevents Pollinations from serving the same cached image every
-    # time a topic repeats — without it, identical prompts return identical images.
-    seed = random.randint(1, 999_999)
-    img_url = (
-        f"https://image.pollinations.ai/prompt/{encoded_prompt}"
-        f"?width=1200&height=675&nologo=true&model=flux&seed={seed}"
+
+    for attempt in range(IMAGE_ATTEMPTS):
+        # FLUX model produces significantly more photorealistic results than the default.
+        # Random seed prevents Pollinations from serving the same cached image every
+        # time a topic repeats — without it, identical prompts return identical images.
+        # Re-rolling per attempt also sidesteps a single poisoned cache entry.
+        seed = random.randint(1, 999_999)
+        img_url = (
+            f"https://image.pollinations.ai/prompt/{encoded_prompt}"
+            f"?width=1200&height=675&nologo=true&model=flux&seed={seed}"
+        )
+
+        res = resilient.request_with_retry(
+            "GET",
+            img_url,
+            attempts=1,
+            label=f"pollinations (try {attempt + 1}/{IMAGE_ATTEMPTS})",
+            timeout=90,
+        )
+
+        if res is not None and res.status_code == 200:
+            # Pollinations can answer 200 with an HTML error page or a stub
+            # body. Uploading that would satisfy "has an image" while putting
+            # a broken picture on the post.
+            content_type = res.headers.get("content-type", "")
+            if content_type.startswith("image/") and len(res.content) >= MIN_IMAGE_BYTES:
+                return res.content
+            print(
+                f"    pollinations: 200 but unusable body "
+                f"({content_type or 'no content-type'}, {len(res.content)} bytes)",
+                flush=True,
+            )
+
+        if attempt < IMAGE_ATTEMPTS - 1:
+            resilient.sleep_backoff(attempt)
+
+    print(f"Image generation failed after {IMAGE_ATTEMPTS} attempts.", flush=True)
+    return None
+
+
+def build_adsense_unit() -> str:
+    """One responsive in-article AdSense unit, or '' when no slot is configured.
+
+    Exactly one manual unit per article, on purpose. Auto Ads is already
+    enabled site-wide; stacking manual units on top of it is how a page ends
+    up over the ad-density line.
+    """
+    if not ADSENSE_SLOT_ID:
+        return ""
+    return (
+        '<div style="margin:32px 0; text-align:center;">'
+        '<ins class="adsbygoogle" style="display:block; text-align:center;" '
+        'data-ad-layout="in-article" data-ad-format="fluid" '
+        f'data-ad-client="{ADSENSE_CLIENT}" data-ad-slot="{ADSENSE_SLOT_ID}"></ins>'
+        "<script>(adsbygoogle = window.adsbygoogle || []).push({});</script>"
+        "</div>"
     )
 
-    try:
-        res = requests.get(img_url, timeout=90)
-        if res.status_code == 200:
-            return res.content
-        print(f"Pollinations returned HTTP {res.status_code}", flush=True)
-    except Exception as e:
-        print(f"Image generation error: {e}", flush=True)
 
-    return None
+def inject_adsense_unit(html: str) -> str:
+    """Place the in-article unit at the nearest <h2> past the article midpoint.
+
+    Anchoring to a heading keeps the ad on a natural section break rather than
+    splitting a paragraph mid-argument.
+    """
+    unit = build_adsense_unit()
+    if not unit:
+        return html
+
+    headings = list(re.finditer(r"<h2[\s>]", html, re.I))
+    if not headings:
+        print("No <h2> found — skipping in-article ad unit.", flush=True)
+        return html
+
+    midpoint = len(html) // 2
+    target = next((m for m in headings if m.start() >= midpoint), headings[-1])
+    print("Injected one in-article AdSense unit.", flush=True)
+    return html[: target.start()] + unit + html[target.start() :]
 
 
 def upload_image_to_wp(image_bytes: bytes, topic: str) -> int | None:
@@ -393,29 +471,42 @@ def upload_image_to_wp(image_bytes: bytes, topic: str) -> int | None:
         "Content-Type": "image/jpeg",
         "Content-Disposition": f'attachment; filename="{filename}"',
     }
-    try:
-        res = requests.post(
-            f"{WP_URL}/wp-json/wp/v2/media",
-            headers=media_headers,
-            auth=auth,
-            data=image_bytes,
-            timeout=60,
-        )
-        if res.status_code == 201:
-            media_id = res.json()["id"]
-            # Alt text for SEO and accessibility
-            requests.post(
-                f"{WP_URL}/wp-json/wp/v2/media/{media_id}",
-                auth=auth,
-                json={"alt_text": topic, "title": topic},
-                timeout=30,
-            )
-            print(f"Image uploaded — Media ID: {media_id}", flush=True)
-            return media_id
-        print(f"Image upload failed: HTTP {res.status_code} — {res.text[:200]}", flush=True)
-    except Exception as e:
-        print(f"Image upload error: {e}", flush=True)
-    return None
+    # Retried for the same reason the generation call is: a failed upload
+    # leaves the post with no featured image, which is a QC blocker.
+    res = resilient.request_with_retry(
+        "POST",
+        f"{WP_URL}/wp-json/wp/v2/media",
+        attempts=3,
+        label="wp/media-upload",
+        headers=media_headers,
+        auth=auth,
+        data=image_bytes,
+        timeout=60,
+    )
+    if res is None or res.status_code != 201:
+        status = res.status_code if res is not None else "no response"
+        print(f"Image upload failed: {status}", flush=True)
+        if res is not None:
+            print(res.text[:200], flush=True)
+        return None
+
+    media_id = res.json()["id"]
+    # Alt text is a BLOCKER in its own right, so this call is retried too —
+    # an uploaded image with no alt text still holds the post as a draft.
+    alt_res = resilient.request_with_retry(
+        "POST",
+        f"{WP_URL}/wp-json/wp/v2/media/{media_id}",
+        attempts=3,
+        label="wp/media-alt",
+        auth=auth,
+        json={"alt_text": topic, "title": topic},
+        timeout=30,
+    )
+    if alt_res is None or alt_res.status_code != 200:
+        print(f"WARNING: alt text not set on media {media_id}", flush=True)
+
+    print(f"Image uploaded — Media ID: {media_id}", flush=True)
+    return media_id
 
 
 def _normalize_title(t: str) -> str:
@@ -523,121 +614,124 @@ Write a highly technical, professional 1,200-word engineering article on: "{topi
 
 # ─── Main ────────────────────────────────────────────────────────────────────
 
-topic, post_title = pick_topic()
-print(f"Selected topic: {topic}", flush=True)
-if post_title != topic:
-    print(f"All topics covered — publishing dated review: {post_title}", flush=True)
+def main() -> None:
+    topic, post_title = pick_topic()
+    print(f"Selected topic: {topic}", flush=True)
+    if post_title != topic:
+        print(f"All topics covered — publishing dated review: {post_title}", flush=True)
 
-# 1. Generate contextual featured image
-featured_media_id = None
-image_bytes = fetch_contextual_image(topic)
-if image_bytes:
-    featured_media_id = upload_image_to_wp(image_bytes, topic)
-else:
-    print("Skipping featured image — will publish without one.", flush=True)
-
-# 2. Generate article via Gemini REST API
-MODELS = ["gemini-2.0-flash", "gemini-flash-latest", "gemini-2.0-flash-lite"]
-html_content = None
-
-print("Generating article via Gemini...", flush=True)
-for model in MODELS:
-    url = (
-        f"https://generativelanguage.googleapis.com/v1beta/models/{model}"
-        f":generateContent?key={GEMINI_API_KEY}"
+    # 1. Generate the article first. Text generation is the step most likely to
+    #    fail outright, and it is the only one with nothing to undo — running it
+    #    before the image upload means a dead Gemini chain no longer strands an
+    #    orphaned image in the WordPress media library.
+    print("Generating article via Gemini...", flush=True)
+    html_content, model_used = resilient.gemini_generate(
+        GEMINI_API_KEY, build_gemini_prompt(topic), timeout=90
     )
-    payload = {"contents": [{"parts": [{"text": build_gemini_prompt(topic)}]}]}
-    res = requests.post(url, json=payload, timeout=90)
-
-    if res.status_code == 200:
-        html_content = res.json()["candidates"][0]["content"]["parts"][0]["text"]
-        print(f"Article generated with model {model}.", flush=True)
-        break
-    elif res.status_code == 429:
-        print(f"Rate-limited on {model}, trying next...", flush=True)
-    else:
-        print(f"Model {model} → HTTP {res.status_code}", flush=True)
-
-if not html_content:
-    print("ERROR: Could not generate content from any Gemini model.", flush=True)
-    exit(1)
-
-# 3. Sanitize: remove CSS injection, fix broken property names, strip LaTeX
-html_content = sanitize_content(html_content)
-
-# 4. Inject internal SEO links (max 2 per anchor type)
-html_content = re.sub(
-    r"(?i)\b(electrolyzer[s]?|electrolysis)\b",
-    f'<a href="{WP_URL}/electrolyzer-calculator/" style="color:#0056b3; font-weight:bold;">\\1</a>',
-    html_content,
-    count=2,
-)
-html_content = re.sub(
-    r"(?i)\b(water treatment|ultrapure water|water consumption)\b",
-    f'<a href="{WP_URL}/water-consumption-calculator/" style="color:#0056b3; font-weight:bold;">\\1</a>',
-    html_content,
-    count=2,
-)
-
-# 5. Quality gate — a defective article is held as a draft rather than
-#    published, so readers and Googlebot never see it. Every rule in
-#    qc_check exists because that defect once shipped live.
-qc_media = None
-if featured_media_id:
-    qc_media = {
-        "alt_text": topic,
-        "media_details": {"width": 1200, "height": 675},
-    }
-
-issues = qc_check.check_post(post_title, html_content, qc_media)
-fatal = qc_check.blockers(issues)
-for severity, message in issues:
-    print(f"  QC {severity}: {message}", flush=True)
-
-publish_status = "publish"
-if fatal:
-    publish_status = "draft"
-    print(
-        f"QC FAILED ({len(fatal)} blockers) — saving as DRAFT for human review "
-        "instead of publishing.",
-        flush=True,
-    )
-else:
-    print("QC passed.", flush=True)
-
-# 6. Publish to WordPress with topic-specific categories and SEO excerpt
-categories = (TOPICS.get(topic) or {}).get("categories", [12])
-print(f"Sending to WordPress as '{publish_status}' (categories: {categories})...", flush=True)
-payload = {
-    "title": post_title,
-    "content": html_content,
-    "status": publish_status,
-    "categories": categories,
-    "excerpt": make_excerpt(html_content),
-}
-if featured_media_id:
-    payload["featured_media"] = featured_media_id
-
-wp_res = requests.post(
-    f"{WP_URL}/wp-json/wp/v2/posts",
-    headers=headers,
-    auth=auth,
-    json=payload,
-    timeout=60,
-)
-if wp_res.status_code == 201:
-    post_id = wp_res.json()["id"]
-    print(
-        f"SUCCESS: '{post_title}' saved as {publish_status} "
-        f"(Post ID: {post_id}, Media ID: {featured_media_id}).",
-        flush=True,
-    )
-    # Non-zero exit makes the workflow run go red so a held draft is visible
-    # in the Actions tab instead of passing silently.
-    if publish_status == "draft":
-        print("Review the draft in WordPress before publishing.", flush=True)
+    if not html_content:
+        print("ERROR: Could not generate content from any Gemini model.", flush=True)
         exit(1)
-else:
-    print(f"ERROR: Publish failed — HTTP {wp_res.status_code}", flush=True)
-    print(wp_res.text[:500], flush=True)
-    exit(1)
+    print(f"Article generated with model {model_used}.", flush=True)
+
+    # 2. Sanitize: remove CSS injection, fix broken property names, strip LaTeX
+    html_content = sanitize_content(html_content)
+
+    # 3. Inject internal SEO links (max 2 per anchor type)
+    html_content = re.sub(
+        r"(?i)\b(electrolyzer[s]?|electrolysis)\b",
+        f'<a href="{WP_URL}/electrolyzer-calculator/" style="color:#0056b3; font-weight:bold;">\\1</a>',
+        html_content,
+        count=2,
+    )
+    html_content = re.sub(
+        r"(?i)\b(water treatment|ultrapure water|water consumption)\b",
+        f'<a href="{WP_URL}/water-consumption-calculator/" style="color:#0056b3; font-weight:bold;">\\1</a>',
+        html_content,
+        count=2,
+    )
+
+    # 4. Featured image, now that there is an article to attach it to
+    featured_media_id = None
+    image_bytes = fetch_contextual_image(topic)
+    if image_bytes:
+        featured_media_id = upload_image_to_wp(image_bytes, topic)
+    else:
+        print("Skipping featured image — will publish without one.", flush=True)
+
+    # 5. Quality gate — a defective article is held as a draft rather than
+    #    published, so readers and Googlebot never see it. Every rule in
+    #    qc_check exists because that defect once shipped live.
+    qc_media = None
+    if featured_media_id:
+        qc_media = {
+            "alt_text": topic,
+            "media_details": {"width": 1200, "height": 675},
+        }
+
+    issues = qc_check.check_post(post_title, html_content, qc_media)
+    fatal = qc_check.blockers(issues)
+    for severity, message in issues:
+        print(f"  QC {severity}: {message}", flush=True)
+
+    publish_status = "publish"
+    if fatal:
+        publish_status = "draft"
+        print(
+            f"QC FAILED ({len(fatal)} blockers) — saving as DRAFT for human review "
+            "instead of publishing.",
+            flush=True,
+        )
+    else:
+        print("QC passed.", flush=True)
+
+    # 6. Ad unit goes in after the gate: qc_check measures body length from
+    #    stripped tags, and inline script text would count toward the
+    #    thin-content threshold and mask a genuinely short article.
+    html_content = inject_adsense_unit(html_content)
+
+    # 7. Publish to WordPress with topic-specific categories and SEO excerpt
+    categories = (TOPICS.get(topic) or {}).get("categories", [12])
+    print(f"Sending to WordPress as '{publish_status}' (categories: {categories})...", flush=True)
+    payload = {
+        "title": post_title,
+        "content": html_content,
+        "status": publish_status,
+        "categories": categories,
+        "excerpt": make_excerpt(html_content),
+    }
+    if featured_media_id:
+        payload["featured_media"] = featured_media_id
+
+    wp_res = resilient.request_with_retry(
+        "POST",
+        f"{WP_URL}/wp-json/wp/v2/posts",
+        attempts=3,
+        label="wp/publish",
+        headers=headers,
+        auth=auth,
+        json=payload,
+        timeout=60,
+    )
+    if wp_res is not None and wp_res.status_code == 201:
+        post_id = wp_res.json()["id"]
+        print(
+            f"SUCCESS: '{post_title}' saved as {publish_status} "
+            f"(Post ID: {post_id}, Media ID: {featured_media_id}).",
+            flush=True,
+        )
+        # Non-zero exit makes the workflow run go red so a held draft is visible
+        # in the Actions tab instead of passing silently.
+        if publish_status == "draft":
+            print("Review the draft in WordPress before publishing.", flush=True)
+            print("recover_drafts.py will retry the image on its next run.", flush=True)
+            exit(1)
+    else:
+        status = wp_res.status_code if wp_res is not None else "no response"
+        print(f"ERROR: Publish failed — {status}", flush=True)
+        if wp_res is not None:
+            print(wp_res.text[:500], flush=True)
+        exit(1)
+
+
+if __name__ == "__main__":
+    main()
