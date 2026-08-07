@@ -174,6 +174,32 @@ a bracketed numerator/denominator — never `\frac`.
   links.
 - **Every post needs an excerpt** — without one, Google invents its own search
   snippet from arbitrary body text.
+- **Every third-party call retries with backoff.** Pollinations and the Gemini
+  API both fail transiently, and a single unretried failure costs a whole
+  publishing slot. Two consecutive slots were lost this way: a Pollinations
+  HTTP 500 on 5 Aug parked a finished article as a draft, and on 7 Aug the
+  Gemini fallback chain burned through all three models in 0.6 s of 429/503
+  and produced nothing. Retry logic lives in `resilient.py`; the model chain
+  must retry *within* each model before falling through, so the chain outlasts
+  a short quota window.
+- **Article text is generated before the image is uploaded.** Text generation
+  is the step most likely to fail outright and the only one with nothing to
+  undo. Uploading first meant a dead Gemini chain stranded an orphaned image
+  in the media library (media 1117, 7 Aug).
+- **A held draft is retried, not forgotten.** `recover_drafts.py` runs daily,
+  regenerates missing images, re-runs the full QC suite, and publishes only
+  when every blocker clears. Drafts blocked for editorial reasons — thin
+  content, LaTeX, title mismatch — are reported and left for a human.
+
+### Advertising
+
+- **At most one manual in-article unit per post.** Auto Ads is enabled
+  site-wide; manual units stacked on top of it push a page over the ad-density
+  line. The unit is opt-in via the `ADSENSE_SLOT_ID` secret — unset, posts
+  carry no manual unit at all.
+- The unit anchors to an `<h2>` past the article midpoint, never mid-paragraph,
+  and is injected **after** the QC gate so its inline script text is not
+  counted toward the thin-content threshold.
 
 ---
 

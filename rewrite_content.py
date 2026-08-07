@@ -34,6 +34,8 @@ import time
 import requests
 from dotenv import load_dotenv
 
+import resilient
+
 load_dotenv()
 
 WP_URL = os.environ.get("WP_URL", "https://www.avoltium.in").rstrip("/")
@@ -171,31 +173,10 @@ SOURCE ITEM (for factual context only — do not copy its wording):
 
 
 def call_gemini(prompt: str) -> str | None:
-    for model in MODELS:
-        url = (
-            f"https://generativelanguage.googleapis.com/v1beta/models/{model}"
-            f":generateContent?key={GEMINI_API_KEY}"
-        )
-        try:
-            res = requests.post(
-                url, json={"contents": [{"parts": [{"text": prompt}]}]}, timeout=120
-            )
-        except Exception as e:
-            print(f"    {model}: request error {e}", flush=True)
-            continue
-
-        if res.status_code == 200:
-            try:
-                return res.json()["candidates"][0]["content"]["parts"][0]["text"]
-            except (KeyError, IndexError):
-                print(f"    {model}: unexpected response shape", flush=True)
-                continue
-        if res.status_code == 429:
-            print(f"    {model}: rate limited, waiting 20s", flush=True)
-            time.sleep(20)
-            continue
-        print(f"    {model}: HTTP {res.status_code}", flush=True)
-    return None
+    text, _model = resilient.gemini_generate(
+        GEMINI_API_KEY, prompt, models=MODELS, timeout=120
+    )
+    return text
 
 
 def make_excerpt(html: str) -> str:
