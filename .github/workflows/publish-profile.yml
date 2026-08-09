@@ -1,0 +1,43 @@
+name: Publish profile page
+
+permissions:
+  contents: read
+
+# Manual only. This overwrites the ABOUT US page and can permanently delete a
+# page, so it must never fire on a schedule.
+on:
+  workflow_dispatch:
+    inputs:
+      execute:
+        description: 'Actually publish (false = render only)'
+        type: boolean
+        required: true
+        default: false
+      include_phone:
+        description: 'Publish the mobile number as well as the email'
+        type: boolean
+        default: false
+      delete_page:
+        description: 'Page id to permanently delete first (0 = none). 557 is the orphan /home-mobile/.'
+        default: '0'
+
+jobs:
+  profile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install --quiet requests
+      - name: Publish
+        env:
+          WP_URL: ${{ secrets.WP_URL }}
+          WP_USERNAME: ${{ secrets.WP_USERNAME }}
+          WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
+        run: |
+          ARGS=(--delete-page "${{ inputs.delete_page }}")
+          [ "${{ inputs.execute }}" = "true" ] && ARGS+=(--execute)
+          [ "${{ inputs.include_phone }}" = "true" ] && ARGS+=(--include-phone)
+          python publish_profile.py "${ARGS[@]}"
