@@ -29,4 +29,7 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           # Optional. Unset means Auto Ads only, with no manual in-article unit.
           ADSENSE_SLOT_ID: ${{ secrets.ADSENSE_SLOT_ID }}
+          # Optional. Unset means article generation calls Gemini directly.
+          OMNIROUTE_BASE_URL: ${{ secrets.OMNIROUTE_BASE_URL }}
+          OMNIROUTE_API_KEY: ${{ secrets.OMNIROUTE_API_KEY }}
         run: python generate_article.py

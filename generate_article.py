@@ -22,6 +22,12 @@ WP_USERNAME = os.environ.get("WP_USERNAME")
 WP_APP_PASSWORD = os.environ.get("WP_APP_PASSWORD")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
+# Optional: route article generation through an OmniRoute (or other
+# OpenAI-compatible) gateway for cost/token-compression routing. Leaving
+# either unset falls back to calling the Gemini API directly, unchanged.
+OMNIROUTE_BASE_URL = os.environ.get("OMNIROUTE_BASE_URL", "").strip()
+OMNIROUTE_API_KEY = os.environ.get("OMNIROUTE_API_KEY", "").strip()
+
 # Optional: an AdSense display-unit slot ID. When set, one in-article unit is
 # placed mid-body. Left unset, posts carry no manual unit and monetization
 # falls back to Auto Ads alone — which is how every existing post is served.
@@ -625,8 +631,12 @@ def main() -> None:
     #    before the image upload means a dead Gemini chain no longer strands an
     #    orphaned image in the WordPress media library.
     print("Generating article via Gemini...", flush=True)
-    html_content, model_used = resilient.gemini_generate(
-        GEMINI_API_KEY, build_gemini_prompt(topic), timeout=90
+    html_content, model_used = resilient.generate_text(
+        GEMINI_API_KEY,
+        build_gemini_prompt(topic),
+        timeout=90,
+        omniroute_base_url=OMNIROUTE_BASE_URL or None,
+        omniroute_api_key=OMNIROUTE_API_KEY or None,
     )
     if not html_content:
         print("ERROR: Could not generate content from any Gemini model.", flush=True)
