@@ -80,6 +80,18 @@ wide = m.Diagram(
 im = m.render(wide)
 check("overflowing content still renders at size", im.size, (m.WIDTH, m.HEIGHT))
 
+print("\ndifferent articles get different figures")
+# Three separate BOP articles exist. A dry run had all three resolving to the
+# same figure, which would have put the identical image on three posts — the
+# duplicate-image problem the old pipeline carried a random seed to avoid.
+bop = ["Balance of Plant (BOP) Strategies for Large-Scale Green Hydrogen Facilities",
+       "Balance of Plant Engineering: Pumps, Cooling and Instrumentation for Green Hydrogen",
+       "Balance of Plant Testing and Maintenance: Critical Best Practices"]
+figures = [m.diagram_for(t) for t in bop]
+check("every BOP article resolves", all(f is not None for f in figures), True)
+check("each BOP article gets its own figure",
+      len({f.title for f in figures if f}), len(bop))
+
 print("\nevery defined diagram renders")
 for key, dg in m.DIAGRAMS.items():
     try:
