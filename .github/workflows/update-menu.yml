@@ -1,0 +1,37 @@
+name: Update navigation menu
+
+permissions:
+  contents: read
+
+# Manual only — it edits the live navigation.
+on:
+  workflow_dispatch:
+    inputs:
+      execute:
+        description: 'Actually change the menu (false = show the plan only)'
+        type: boolean
+        required: true
+        default: false
+      menu_id:
+        description: 'Menu ID (0 = auto-detect the largest menu)'
+        default: '0'
+
+jobs:
+  menu:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install --quiet requests
+      - name: Update menu
+        env:
+          WP_URL: ${{ secrets.WP_URL }}
+          WP_USERNAME: ${{ secrets.WP_USERNAME }}
+          WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
+        run: |
+          ARGS=(--menu-id "${{ inputs.menu_id }}")
+          [ "${{ inputs.execute }}" = "true" ] && ARGS+=(--execute)
+          python update_menu.py "${ARGS[@]}"
