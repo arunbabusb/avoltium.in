@@ -1,0 +1,273 @@
+#!/usr/bin/env python3
+"""Draw accurate process diagrams for topics no honest photograph covers.
+
+Why draw instead of search
+--------------------------
+image_sourcing.find_image returns None for subjects like an EDI polishing
+train or a PEM stack cutaway, because no correctly-licensed photograph of one
+exists. The previous pipeline answered that gap by asking FLUX for a
+photorealistic render, which produced a bedroom for the mixed-bed article.
+
+A diagram does not have that failure mode. It contains exactly the boxes we
+put in it, in the order we put them, with the labels we wrote. It cannot
+hallucinate equipment, and being ours it needs no licence and carries no
+attribution. For a process article a correct schematic is also simply more
+useful than any photo — a reader wants the train order and the conductivity
+targets, not a picture of a grey vessel.
+
+Rendering
+---------
+Drawn directly to PNG with Pillow. WordPress rejects SVG uploads by default
+for security, and cairosvg is not installed, so PNG is the format that can
+actually become a featured image. 1200x675 matches the 16:9 the theme already
+uses.
+
+Adding a diagram means adding a DIAGRAMS entry — a title, a caption and the
+stages. Everything in it is asserted by whoever writes it, so the numbers must
+come from the article, not from the renderer.
+"""
+
+from __future__ import annotations
+
+import glob
+import os
+from dataclasses import dataclass, field
+from typing import Dict, List, Optional
+
+from PIL import Image, ImageDraw, ImageFont
+
+WIDTH, HEIGHT = 1200, 675
+
+# Muted technical palette. Deliberately not the saturated blue-and-orange of
+# stock infographics — this should read as a reference drawing.
+BG = (247, 248, 250)
+INK = (28, 34, 43)
+MUTED = (104, 116, 132)
+RULE = (206, 213, 222)
+BOX_FILL = (255, 255, 255)
+ACCENT = (10, 102, 148)
+ACCENT_SOFT = (222, 236, 244)
+
+
+def _font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont:
+    names = (["DejaVuSans-Bold.ttf", "LiberationSans-Bold.ttf"] if bold
+             else ["DejaVuSans.ttf", "LiberationSans-Regular.ttf"])
+    for name in names:
+        for path in glob.glob(f"/usr/share/fonts/**/{name}", recursive=True):
+            try:
+                return ImageFont.truetype(path, size)
+            except OSError:
+                continue
+    # Pillow's built-in bitmap font is unreadable at these sizes, but a poor
+    # diagram still beats crashing the publish.
+    return ImageFont.load_default()
+
+
+@dataclass
+class Stage:
+    label: str
+    detail: str = ""
+
+
+@dataclass
+class Diagram:
+    title: str
+    caption: str
+    stages: List[Stage] = field(default_factory=list)
+    footnote: str = ""
+
+
+def _wrap(draw, text, font, max_width) -> List[str]:
+    """Word-wrap, honouring explicit newlines as hard breaks.
+
+    Stage details hold separate facts on separate lines. Flowing them together
+    reads as one garbled sentence — "Municipal or bore water Turbidity and
+    hardness removal" — so a \\n has to stay a break rather than collapse into
+    a space.
+    """
+    lines: List[str] = []
+    for paragraph in (text or "").split("\n"):
+        cur = ""
+        for w in paragraph.split():
+            trial = f"{cur} {w}".strip()
+            if draw.textlength(trial, font=font) <= max_width or not cur:
+                cur = trial
+            else:
+                lines.append(cur)
+                cur = w
+        lines.append(cur)
+    return [ln for ln in lines if ln]
+
+
+def render(diagram: Diagram) -> Image.Image:
+    img = Image.new("RGB", (WIDTH, HEIGHT), BG)
+    d = ImageDraw.Draw(img)
+
+    f_title = _font(38, bold=True)
+    f_cap = _font(20)
+    f_box = _font(21, bold=True)
+    f_detail = _font(16)
+    f_foot = _font(15)
+
+    margin = 60
+    d.text((margin, 52), diagram.title, font=f_title, fill=INK)
+
+    y = 108
+    for line in _wrap(d, diagram.caption, f_cap, WIDTH - 2 * margin)[:2]:
+        d.text((margin, y), line, font=f_cap, fill=MUTED)
+        y += 26
+
+    d.line([(margin, y + 14), (WIDTH - margin, y + 14)], fill=RULE, width=2)
+
+    n = len(diagram.stages)
+    if n == 0:
+        return img
+
+    gap = 34
+    total_gap = gap * (n - 1)
+    box_w = (WIDTH - 2 * margin - total_gap) / n
+
+    # Size the boxes to their content and centre the band in the space left
+    # between the rule and the footnote. Stretching boxes to fill the frame
+    # just moved the empty space inside them.
+    LABEL_LH, DETAIL_LH, PAD_TOP, PAD_BOT, LABEL_GAP = 27, 21, 30, 26, 8
+    wrapped = []
+    for stage in diagram.stages:
+        lab = _wrap(d, stage.label, f_box, box_w - 28)[:3]
+        det = _wrap(d, stage.detail, f_detail, box_w - 28)[:5] if stage.detail else []
+        wrapped.append((lab, det))
+    band_h = max(
+        PAD_TOP + len(lab) * LABEL_LH + (LABEL_GAP + len(det) * DETAIL_LH if det else 0) + PAD_BOT
+        for lab, det in wrapped
+    )
+
+    rule_y = y + 14
+    foot_h = 44 if diagram.footnote else 0
+    avail_top, avail_bot = rule_y + 30, HEIGHT - 18 - foot_h
+    band_top = avail_top + max(0, (avail_bot - avail_top - band_h) / 2)
+
+    for i, stage in enumerate(diagram.stages):
+        lab, det = wrapped[i]
+        x0 = margin + i * (box_w + gap)
+        x1 = x0 + box_w
+        d.rounded_rectangle([x0, band_top, x1, band_top + band_h],
+                            radius=10, fill=BOX_FILL, outline=RULE, width=2)
+        # Accent strip marks flow direction without needing a legend.
+        d.rounded_rectangle([x0, band_top, x1, band_top + 7],
+                            radius=3, fill=ACCENT)
+
+        ty = band_top + PAD_TOP
+        for line in lab:
+            tw = d.textlength(line, font=f_box)
+            d.text((x0 + (box_w - tw) / 2, ty), line, font=f_box, fill=INK)
+            ty += LABEL_LH
+
+        if det:
+            ty += LABEL_GAP
+            for line in det:
+                tw = d.textlength(line, font=f_detail)
+                d.text((x0 + (box_w - tw) / 2, ty), line, font=f_detail, fill=MUTED)
+                ty += DETAIL_LH
+
+        if i < n - 1:
+            ax0 = x1 + 8
+            ax1 = x1 + gap - 8
+            ay = band_top + band_h / 2
+            d.line([(ax0, ay), (ax1 - 5, ay)], fill=ACCENT, width=3)
+            d.polygon([(ax1, ay), (ax1 - 11, ay - 7), (ax1 - 11, ay + 7)], fill=ACCENT)
+
+    if diagram.footnote:
+        fy = band_top + band_h + 34
+        for line in _wrap(d, diagram.footnote, f_foot, WIDTH - 2 * margin)[:2]:
+            d.text((margin, fy), line, font=f_foot, fill=MUTED)
+            fy += 20
+
+    d.rectangle([0, HEIGHT - 6, WIDTH, HEIGHT], fill=ACCENT_SOFT)
+    return img
+
+
+# Diagrams keyed by a topic fragment matched case-insensitively against the
+# article title. Every figure here is asserted by the article it illustrates;
+# nothing is inferred by the renderer.
+DIAGRAMS: Dict[str, Diagram] = {
+    "mixed-bed": Diagram(
+        title="Ultrapure feedwater train for PEM electrolysis",
+        caption="Typical polishing sequence and the conductivity target at each stage.",
+        stages=[
+            Stage("Raw feed", "Municipal or bore water\nTurbidity and hardness removal"),
+            Stage("Reverse osmosis", "Bulk ion rejection\n~95-99% of dissolved solids"),
+            Stage("EDI", "Continuous electro-regeneration\nNo acid or caustic handling"),
+            Stage("Mixed-bed polish", "Cation and anion resin\nFinal trace ion capture"),
+            Stage("Stack feed", "Target >15 MΩ·cm\nContinuous resistivity monitoring"),
+        ],
+        footnote="EDI removes the regeneration chemistry a mixed bed needs; a polishing bed "
+                 "downstream still guards the stack against resin bleed and EDI upset.",
+    ),
+    "electrodeionization": Diagram(
+        title="Ultrapure feedwater train for PEM electrolysis",
+        caption="Typical polishing sequence and the conductivity target at each stage.",
+        stages=[
+            Stage("Raw feed", "Municipal or bore water\nTurbidity and hardness removal"),
+            Stage("Reverse osmosis", "Bulk ion rejection\n~95-99% of dissolved solids"),
+            Stage("EDI", "Continuous electro-regeneration\nNo acid or caustic handling"),
+            Stage("Mixed-bed polish", "Cation and anion resin\nFinal trace ion capture"),
+            Stage("Stack feed", "Target >15 MΩ·cm\nContinuous resistivity monitoring"),
+        ],
+        footnote="EDI removes the regeneration chemistry a mixed bed needs; a polishing bed "
+                 "downstream still guards the stack against resin bleed and EDI upset.",
+    ),
+    "balance of plant": Diagram(
+        title="Balance of plant around the electrolyser island",
+        caption="The systems outside the stack that determine plant availability.",
+        stages=[
+            Stage("Power conditioning", "Transformer and rectifier\nDC ripple control"),
+            Stage("Water treatment", "RO, EDI and polishing\nFeed conductivity control"),
+            Stage("Electrolyser island", "Stacks and process skids\nGas-liquid separation"),
+            Stage("Gas processing", "Deoxygenation and drying\nPurity to specification"),
+            Stage("Compression", "Storage or pipeline pressure\nBuffer management"),
+        ],
+        footnote="BOP typically dominates both installed cost and unplanned downtime, "
+                 "which is why availability work rarely starts at the stack.",
+    ),
+    "thermal management": Diagram(
+        title="Heat rejection path in an industrial electrolyser",
+        caption="Where stack inefficiency ends up, and what removes it.",
+        stages=[
+            Stage("Stack losses", "Ohmic and overpotential heat\nRises with current density"),
+            Stage("Process loop", "Deionised coolant\nStack outlet temperature control"),
+            Stage("Heat exchanger", "Plate or shell-and-tube\nLoop isolation"),
+            Stage("Rejection", "Cooling tower or dry cooler\nAmbient dependent"),
+            Stage("Recovery", "Optional low-grade offtake\nDistrict or process heat"),
+        ],
+        footnote="Recovered heat is low grade. It is worth capturing only where an offtaker "
+                 "sits close enough for the pipework to pay back.",
+    ),
+}
+
+
+def diagram_for(title: str) -> Optional[Diagram]:
+    """Match an article title to a diagram, longest key first.
+
+    Longest-first matters: "mixed-bed" and "electrodeionization" can both
+    appear in one title and must not resolve by dict order.
+    """
+    t = (title or "").lower()
+    for key in sorted(DIAGRAMS, key=len, reverse=True):
+        if key in t:
+            return DIAGRAMS[key]
+    return None
+
+
+def render_for_title(title: str, out_path: str) -> Optional[str]:
+    diagram = diagram_for(title)
+    if diagram is None:
+        return None
+    render(diagram).save(out_path, "PNG", optimize=True)
+    return out_path
+
+
+if __name__ == "__main__":
+    import sys
+    title = " ".join(sys.argv[1:]) or "Electrodeionization (EDI) vs Mixed-Bed Polishing"
+    out = render_for_title(title, "diagram_preview.png")
+    print(f"wrote {out}" if out else f"no diagram defined for {title!r}")
