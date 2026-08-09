@@ -43,6 +43,12 @@ WP_USERNAME = os.environ.get("WP_USERNAME")
 WP_APP_PASSWORD = os.environ.get("WP_APP_PASSWORD")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
+# Optional: route rewrites through an OmniRoute (or other OpenAI-compatible)
+# gateway for cost/token-compression routing. Leaving either unset falls
+# back to calling the Gemini API directly, unchanged.
+OMNIROUTE_BASE_URL = os.environ.get("OMNIROUTE_BASE_URL", "").strip()
+OMNIROUTE_API_KEY = os.environ.get("OMNIROUTE_API_KEY", "").strip()
+
 if not all([WP_URL, WP_USERNAME, WP_APP_PASSWORD, GEMINI_API_KEY]):
     print("ERROR: Missing WP_URL / WP_USERNAME / WP_APP_PASSWORD / GEMINI_API_KEY.", flush=True)
     raise SystemExit(1)
@@ -188,8 +194,13 @@ SOURCE ITEM (for factual context only — do not copy its wording):
 
 
 def call_gemini(prompt: str) -> str | None:
-    text, _model = resilient.gemini_generate(
-        GEMINI_API_KEY, prompt, models=MODELS, timeout=120
+    text, _model = resilient.generate_text(
+        GEMINI_API_KEY,
+        prompt,
+        models=MODELS,
+        timeout=120,
+        omniroute_base_url=OMNIROUTE_BASE_URL or None,
+        omniroute_api_key=OMNIROUTE_API_KEY or None,
     )
     return text
 

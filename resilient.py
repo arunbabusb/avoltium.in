@@ -118,3 +118,81 @@ def gemini_generate(
             print(f"  {model}: unusable response shape — trying next model.", flush=True)
 
     return None, None
+
+
+def omniroute_generate(
+    api_key: str,
+    prompt: str,
+    *,
+    base_url: str,
+    models: list[str] | None = None,
+    attempts_per_model: int = 3,
+    timeout: int = 120,
+) -> tuple[str | None, str | None]:
+    """Generate text through an OmniRoute (or any OpenAI-compatible) gateway.
+
+    Same retry/model-fallback shape as gemini_generate, but speaks the
+    OpenAI chat-completions wire format OmniRoute exposes at
+    `{base_url}/chat/completions`, rather than Google's REST API directly.
+    """
+    url = base_url.rstrip("/") + "/chat/completions"
+    headers = {"Authorization": f"Bearer {api_key}"}
+
+    for model in models or DEFAULT_GEMINI_MODELS:
+        res = request_with_retry(
+            "POST",
+            url,
+            attempts=attempts_per_model,
+            label=f"omniroute/{model}",
+            headers=headers,
+            json={"model": model, "messages": [{"role": "user", "content": prompt}]},
+            timeout=timeout,
+        )
+
+        if res is None or res.status_code != 200:
+            print(f"  {model} exhausted — falling through to next model.", flush=True)
+            continue
+
+        try:
+            return res.json()["choices"][0]["message"]["content"], model
+        except (KeyError, IndexError, ValueError):
+            # A 200 can still carry an empty/unexpected choices list.
+            print(f"  {model}: unusable response shape — trying next model.", flush=True)
+
+    return None, None
+
+
+def generate_text(
+    api_key: str,
+    prompt: str,
+    *,
+    models: list[str] | None = None,
+    attempts_per_model: int = 3,
+    timeout: int = 120,
+    omniroute_base_url: str | None = None,
+    omniroute_api_key: str | None = None,
+) -> tuple[str | None, str | None]:
+    """Generate text, preferring OmniRoute when configured, else Gemini direct.
+
+    OMNIROUTE_BASE_URL / OMNIROUTE_API_KEY are optional. Neither being set
+    reproduces the old gemini_generate-only behavior exactly, so an
+    unconfigured run is unaffected. When both are set, OmniRoute is tried
+    first (for its cost/token-compression routing) and a failed chain falls
+    back to calling Gemini directly rather than failing the whole run.
+    """
+    if omniroute_base_url and omniroute_api_key:
+        text, model = omniroute_generate(
+            omniroute_api_key,
+            prompt,
+            base_url=omniroute_base_url,
+            models=models,
+            attempts_per_model=attempts_per_model,
+            timeout=timeout,
+        )
+        if text:
+            return text, model
+        print("  OmniRoute chain exhausted — falling back to direct Gemini API.", flush=True)
+
+    return gemini_generate(
+        api_key, prompt, models=models, attempts_per_model=attempts_per_model, timeout=timeout
+    )
