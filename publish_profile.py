@@ -18,9 +18,12 @@ self-defeating.
 
 Contact details
 ---------------
-The email is published because a consultancy page without one is useless. The
-personal mobile number in the CV is deliberately NOT published: once a phone
-number is crawled it cannot be recalled, and it invites automated spam. Pass
+The published address is the role address hello@avoltium.in, never the personal
+one from the CV. A consultancy page needs a contact route, but a personal
+address on a crawled page is harvested within days, cannot be recalled, and
+ties the business to one individual's inbox forever.
+
+The personal mobile is likewise not published, for the same reason. Pass
 --include-phone to override that.
 
 Styling
@@ -54,7 +57,7 @@ WP_APP_PASSWORD = os.environ.get("WP_APP_PASSWORD") or ""
 
 SLUG = "about-us"
 TITLE = "Arun Babu — Green Hydrogen & Mechanical Engineering Consultancy"
-EMAIL = "arunbabusb@gmail.com"
+EMAIL = "hello@avoltium.in"
 PHONE = "+91-7019597352"
 
 PAGES_READ = f"{WP_URL}/wp-json/wp/v2/pages"
