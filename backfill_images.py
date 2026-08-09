@@ -76,6 +76,40 @@ def fetch_posts(s: requests.Session, per_page: int = 100):
     return out
 
 
+MAX_UPLOAD_WIDTH = 1600
+JPEG_QUALITY = 82
+
+
+def compress(data: bytes, filename: str) -> tuple[bytes, str, str]:
+    """Downscale and re-encode before upload.
+
+    A featured image is the largest asset on an article page. Wikimedia serves
+    originals straight from a camera — the first candidate here was 1,211 KB,
+    which would have been the heaviest thing on a site whose mobile speed is
+    already the open complaint. Photos become JPEG at 1600px; diagrams stay
+    PNG because they are line art and text, where JPEG ringing is visible and
+    PNG is already small.
+    """
+    from PIL import Image as _Image
+    if filename.lower().endswith(".png"):
+        return data, "image/png", filename          # diagrams: already ~45 KB
+    try:
+        im = _Image.open(io.BytesIO(data))
+        im = im.convert("RGB")
+        if im.width > MAX_UPLOAD_WIDTH:
+            im = im.resize((MAX_UPLOAD_WIDTH,
+                            round(im.height * MAX_UPLOAD_WIDTH / im.width)),
+                           _Image.LANCZOS)
+        buf = io.BytesIO()
+        im.save(buf, "JPEG", quality=JPEG_QUALITY, optimize=True, progressive=True)
+        out = buf.getvalue()
+        if len(out) < len(data):
+            return out, "image/jpeg", re.sub(r"\.[a-z]+$", ".jpg", filename)
+    except Exception as exc:
+        logger.warning("  compress failed (%s); uploading original", exc)
+    return data, "image/jpeg", filename
+
+
 def upload(s: requests.Session, data: bytes, filename: str, mime: str,
            alt: str, caption: str = "") -> int | None:
     r = s.post(MEDIA_WRITE, data=data, timeout=120, headers={
@@ -155,6 +189,11 @@ def main() -> int:
             # Attribution rides with the image so the credit cannot be lost if
             # the post body is later rewritten.
             caption = re.sub(r"<[^>]+>", "", hit.attribution_html()) if hit.needs_credit else ""
+
+        before = len(data)
+        data, mime, filename = compress(data, filename)
+        if len(data) != before:
+            logger.info("  compressed %d KB -> %d KB", before // 1024, len(data) // 1024)
 
         if not args.execute:
             logger.info("  [DRY-RUN] would upload %s (%d KB) and reassign", filename, len(data) // 1024)

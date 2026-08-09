@@ -229,6 +229,37 @@ DIAGRAMS: Dict[str, Diagram] = {
         footnote="BOP typically dominates both installed cost and unplanned downtime, "
                  "which is why availability work rarely starts at the stack.",
     ),
+    # Three separate BOP articles exist — strategies, pumps and
+    # instrumentation, and testing and maintenance. Matching all of them to
+    # one figure would put the identical image on three posts, which is the
+    # duplicate-image problem the old pipeline carried a random seed to avoid.
+    # More specific keys are checked first, so these win over "balance of plant".
+    "pumps, cooling and instrumentation": Diagram(
+        title="Pumps, cooling and instrumentation around the stack",
+        caption="The rotating and measuring equipment an electrolyser island depends on.",
+        stages=[
+            Stage("Feedwater pumps", "Dosing and transfer duty\nNPSH margin at suction"),
+            Stage("Circulation pumps", "Electrolyte or coolant loop\nSeal and material compatibility"),
+            Stage("Control valves", "Flow and pressure regulation\nCv sizing to turndown"),
+            Stage("Instrumentation", "Flow, pressure, temperature\nConductivity and gas purity"),
+            Stage("Control system", "Interlocks and trips\nAlarm rationalisation"),
+        ],
+        footnote="Pump and valve selection sets the achievable turndown, which decides how "
+                 "well the plant follows a variable renewable supply.",
+    ),
+    "testing and maintenance": Diagram(
+        title="Balance of plant testing and maintenance cycle",
+        caption="Commissioning through steady-state upkeep for an electrolyser plant.",
+        stages=[
+            Stage("Pre-commissioning", "Line flushing and cleanliness\nInstrument loop checks"),
+            Stage("Functional testing", "Interlocks and trips\nControl loop tuning"),
+            Stage("Performance test", "Output and purity against spec\nBaseline for later drift"),
+            Stage("Planned maintenance", "Seals, filters and resin beds\nCalibration intervals"),
+            Stage("Condition monitoring", "Vibration and leak detection\nTrend against baseline"),
+        ],
+        footnote="The performance test matters twice: once as acceptance, and again as the "
+                 "baseline every later degradation measurement is compared against.",
+    ),
     "thermal management": Diagram(
         title="Heat rejection path in an industrial electrolyser",
         caption="Where stack inefficiency ends up, and what removes it.",
