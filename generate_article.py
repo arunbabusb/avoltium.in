@@ -14,6 +14,7 @@ from dotenv import load_dotenv
 
 import qc_check
 import resilient
+from token_cache import get_cache
 
 load_dotenv()
 
@@ -626,22 +627,45 @@ def main() -> None:
     if post_title != topic:
         print(f"All topics covered — publishing dated review: {post_title}", flush=True)
 
-    # 1. Generate the article first. Text generation is the step most likely to
-    #    fail outright, and it is the only one with nothing to undo — running it
-    #    before the image upload means a dead Gemini chain no longer strands an
-    #    orphaned image in the WordPress media library.
-    print("Generating article via Gemini...", flush=True)
-    html_content, model_used = resilient.generate_text(
-        GEMINI_API_KEY,
-        build_gemini_prompt(topic),
-        timeout=90,
-        omniroute_base_url=OMNIROUTE_BASE_URL or None,
-        omniroute_api_key=OMNIROUTE_API_KEY or None,
-    )
-    if not html_content:
-        print("ERROR: Could not generate content from any Gemini model.", flush=True)
-        exit(1)
-    print(f"Article generated with model {model_used}.", flush=True)
+    # 1. Check cache first before generating
+    cache = get_cache()
+    cache_params = {"style": "technical", "length": "1200"}
+    cached_content = cache.get_cached_content(topic, cache_params)
+
+    html_content = None
+    model_used = "cached"
+
+    if cached_content:
+        print("✓ Found cached article — skipping generation", flush=True)
+        html_content = cached_content
+        cache.log_api_call("gemini_cache_hit", tokens_used=0, cached=True)
+    else:
+        # Generate the article. Text generation is the step most likely to
+        # fail outright, and it is the only one with nothing to undo — running it
+        # before the image upload means a dead Gemini chain no longer strands an
+        # orphaned image in the WordPress media library.
+        print("Generating article via Gemini...", flush=True)
+        html_content, model_used = resilient.generate_text(
+            GEMINI_API_KEY,
+            build_gemini_prompt(topic),
+            timeout=90,
+            omniroute_base_url=OMNIROUTE_BASE_URL or None,
+            omniroute_api_key=OMNIROUTE_API_KEY or None,
+        )
+        if not html_content:
+            print("ERROR: Could not generate content from any Gemini model.", flush=True)
+            exit(1)
+        print(f"Article generated with model {model_used}.", flush=True)
+
+        # Cache the generated content (estimate: 1200 words ≈ 1200 tokens)
+        cache.cache_content(
+            topic=topic,
+            content=html_content,
+            params=cache_params,
+            tokens_saved=1200,
+            ttl_days=90
+        )
+        cache.log_api_call("gemini", tokens_used=1200, cost_usd=0.024)
 
     # 2. Sanitize: remove CSS injection, fix broken property names, strip LaTeX
     html_content = sanitize_content(html_content)
