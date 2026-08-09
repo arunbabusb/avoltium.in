@@ -144,31 +144,33 @@ class WikimediaCommonsSearcher:
 
     @classmethod
     def _search_commons(cls, query: str, limit: int = 5) -> List[ProfessionalImage]:
-        """Execute Wikimedia Commons search."""
+        """Execute Wikimedia Commons search in File namespace."""
         try:
+            # Use generator:search with namespace 6 (File:) for actual photos
             params = {
                 "action": "query",
                 "format": "json",
-                "list": "search",
-                "srsearch": query,
-                "srwhat": "text",
-                "srlimit": limit,
-                "srprop": "timestamp|snippet",
+                "generator": "search",
+                "gsrsearch": query,
+                "gsrnamespace": "6",  # File namespace only
+                "gsrlimit": limit * 3,  # Get more candidates for filtering
+                "prop": "imageinfo",
+                "iiprop": "url|size|mime|extmetadata",
             }
             headers = {"User-Agent": cls.USER_AGENT}
 
-            r = requests.get(cls.BASE_URL, params=params, headers=headers, timeout=10)
+            r = requests.get(cls.BASE_URL, params=params, headers=headers, timeout=15)
             r.raise_for_status()
 
             data = r.json()
             results = []
 
-            for item in data.get("query", {}).get("search", []):
-                title = item["title"]
-                # Fetch detailed info including dimensions
-                image_data = cls._get_image_details(title)
+            for page_id, page_data in data.get("query", {}).get("pages", {}).items():
+                image_data = cls._process_file_page(page_data)
                 if image_data:
                     results.append(image_data)
+                    if len(results) >= limit:
+                        break
 
             return results
 
@@ -177,57 +179,47 @@ class WikimediaCommonsSearcher:
             return []
 
     @classmethod
-    def _get_image_details(cls, title: str) -> Optional[ProfessionalImage]:
-        """Fetch full image details and dimensions."""
+    def _process_file_page(cls, page_data: Dict) -> Optional[ProfessionalImage]:
+        """Process a File page from generator:search response."""
         try:
-            params = {
-                "action": "query",
-                "format": "json",
-                "titles": title,
-                "prop": "imageinfo|pageterms",
-                "iiprop": "url|size|mime",
-                "wbptterms": "description",
-            }
-            headers = {"User-Agent": cls.USER_AGENT}
+            if "imageinfo" not in page_data:
+                return None
 
-            r = requests.get(cls.BASE_URL, params=params, headers=headers, timeout=10)
-            r.raise_for_status()
-            data = r.json()
+            image_info = page_data["imageinfo"][0]
+            url = image_info.get("url")
+            width = image_info.get("width", 0)
+            height = image_info.get("height", 0)
+            mime = image_info.get("mime", "")
 
-            pages = data.get("query", {}).get("pages", {})
-            for page_id, page_data in pages.items():
-                if "imageinfo" not in page_data:
-                    continue
+            # Only accept actual photos (reject diagrams, SVG, PDFs)
+            reject_mimes = {"image/svg", "application/pdf"}
+            if any(m in mime for m in reject_mimes):
+                return None
 
-                image_info = page_data["imageinfo"][0]
-                url = image_info.get("url")
-                width = image_info.get("width", 0)
-                height = image_info.get("height", 0)
-                mime = image_info.get("mime", "")
+            # Reject tiny images (likely thumbnails or icons)
+            if width < 800 or height < 600:
+                return None
 
-                # Only accept photos (not SVG/diagrams)
-                if "image/svg" in mime:
-                    continue
+            # Prefer JPEG (real photos) over PNG (often diagrams)
+            is_jpeg = "image/jpeg" in mime
 
-                # Check minimum dimensions
-                if width < 1200 or height < 600:
-                    continue
+            title = page_data.get("title", "").replace("File:", "").replace("_", " ")
 
-                return ProfessionalImage(
-                    url=url,
-                    source="wikimedia",
-                    title=page_data.get("title", ""),
-                    creator="Wikimedia Commons",
-                    license="CC-BY-SA 3.0",
-                    width=width,
-                    height=height,
-                    relevance_score=0.8,  # High default for Wikimedia professional photos
-                    attribution_url=f"https://commons.wikimedia.org/wiki/{page_data.get('title', '')}",
-                    source_page=f"https://commons.wikimedia.org/wiki/{page_data.get('title', '')}"
-                )
+            return ProfessionalImage(
+                url=url,
+                source="wikimedia",
+                title=title,
+                creator="Wikimedia Commons",
+                license="CC-BY-SA 3.0",
+                width=width,
+                height=height,
+                relevance_score=0.85 if is_jpeg else 0.75,  # JPEGs likely real photos
+                attribution_url=f"https://commons.wikimedia.org/wiki/File:{page_data.get('title', '').replace('File:', '')}",
+                source_page=f"https://commons.wikimedia.org/wiki/File:{page_data.get('title', '').replace('File:', '')}"
+            )
 
         except Exception as e:
-            log.debug(f"Failed to get image details for {title}: {e}")
+            log.debug(f"Failed to process file page: {e}")
             return None
 
 
