@@ -75,6 +75,26 @@ def plain(t) -> str:
     return html.unescape(re.sub(r"<[^>]+>", "", t or "")).strip()
 
 
+def find_existing(items, page, slug, label):
+    """Locate an existing menu entry for this page, however it was added.
+
+    Matching on object_id alone is not enough. The dry run showed "Water
+    Consumption Calculator" already in the menu as a custom-URL link, which
+    carries object_id=0 and a different label from ours — so an object_id or
+    exact-title check both miss it, and the run would have added a second
+    entry pointing at the same page. Matching the slug in the URL catches the
+    custom-link case, which is how a human adds a menu item in a hurry.
+    """
+    for i in items:
+        if i.get("object_id") and page and i["object_id"] == page["id"]:
+            return i
+        if slug and slug in (i.get("url") or ""):
+            return i
+        if plain(i.get("title")).lower() == label.lower():
+            return i
+    return None
+
+
 def get_json(s, url, **params):
     r = s.get(url, params=params or None, timeout=45)
     if r.status_code != 200:
@@ -144,9 +164,7 @@ def main() -> int:
         page = pages.get(slug)
         if not page:
             continue
-        existing = next((i for i in items
-                         if i.get("object_id") == page["id"] or
-                         plain(i.get("title")).lower() == label.lower()), None)
+        existing = find_existing(items, page, slug, label)
         plan.append(("move" if existing else "add", label, existing))
 
     logger.info("planned changes: %d", len(plan))
@@ -175,9 +193,7 @@ def main() -> int:
         page = pages.get(slug)
         if not page:
             continue
-        existing = next((i for i in items
-                         if i.get("object_id") == page["id"] or
-                         plain(i.get("title")).lower() == label.lower()), None)
+        existing = find_existing(items, page, slug, label)
         payload = {
             "title": label, "menus": menu_id, "parent": parent["id"],
             "type": "post_type", "object": "page", "object_id": page["id"],
