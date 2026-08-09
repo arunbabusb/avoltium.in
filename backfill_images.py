@@ -76,8 +76,12 @@ def fetch_posts(s: requests.Session, per_page: int = 100):
     return out
 
 
-MAX_UPLOAD_WIDTH = 1600
-JPEG_QUALITY = 82
+# The theme renders featured images at 1024px wide, so anything larger is
+# bytes the browser downloads and discards. Measured on the one photo this
+# backfill sourced: 1600px q82 gave 718 KB, 1024px q78 gives 294 KB — 59% less
+# for no difference at display size.
+MAX_UPLOAD_WIDTH = 1024
+JPEG_QUALITY = 78
 
 
 def compress(data: bytes, filename: str) -> tuple[bytes, str, str]:
