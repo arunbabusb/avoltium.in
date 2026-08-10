@@ -20,3 +20,4 @@ venv/
 TestResults.xml
 shortlist.json
 shortlist.html
+approvals.json

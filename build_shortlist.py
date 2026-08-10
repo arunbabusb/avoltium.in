@@ -177,14 +177,25 @@ def render_html(rows: list[dict], path: str) -> None:
            "img{width:230px;height:150px;object-fit:cover;border-radius:6px;background:#eee}"
            "figure{margin:0}.row{border-top:1px solid #ddd;padding:14px 0}"
            ".c{display:inline-block;width:240px;margin:0 12px 12px 0;vertical-align:top}"
-           "small{color:#555;display:block}")
+           "small{color:#555;display:block}"
+           # Selection UI. Clicking a picture is the whole interaction — hand
+           # -editing approvals into a 70 KB JSON for 38 posts is not usable.
+           ".c{cursor:pointer;border:3px solid transparent;border-radius:9px;padding:3px}"
+           ".c.sel{border-color:#1a7f37;background:#eaf6ec}"
+           ".skip{cursor:pointer;font-size:12px;color:#777;margin-left:4px}"
+           "#bar{position:sticky;bottom:0;background:#fff;border-top:2px solid #333;"
+           "padding:10px 0;margin-top:20px}"
+           "textarea{width:100%;height:80px;font:12px ui-monospace,monospace}")
     out = ["<!doctype html><meta charset=utf-8><title>Image shortlist</title>",
            f"<style>{css}</style>",
            "<h1>Context-matched image shortlist</h1>",
-           "<p>Subjects are tf-idf phrases from each article body. Nothing has been "
-           "applied to the site. Note the candidate index (0, 1, 2) you want and set "
-           "<code>\"approved\"</code> on that post in shortlist.json, then run "
-           "<code>apply_shortlist.py --execute</code>.</p>"]
+           "<p><b>Click a picture to choose it for that article.</b> Click it again to "
+           "unchoose. Anything you leave unchosen keeps the image it has now — skipping "
+           "is a fine answer, and for a wrong-looking subject it is the right one. "
+           "When you are done, copy the box at the bottom into "
+           "<code>approvals.json</code> and run "
+           "<code>python3 apply_shortlist.py --approvals approvals.json --execute</code>.</p>",
+           "<p>Nothing here has been applied to the site.</p>"]
     for r in rows:
         out.append(f"<div class='row'><b>{html.escape(r['title'])}</b> "
                    f"<small>post {r['id']} · subjects: {html.escape(', '.join(r['subjects']))}</small>")
@@ -192,13 +203,39 @@ def render_html(rows: list[dict], path: str) -> None:
             out.append("<p><i>no defensible photo — leave the diagram or generated image</i></p>")
         for i, c in enumerate(r["candidates"]):
             out.append(
-                f"<div class='c'><figure><img loading='lazy' src='{html.escape(c['url'])}' alt=''>"
+                f"<div class='c' data-post='{r['id']}' data-idx='{i}'>"
+                f"<figure><img loading='lazy' src='{html.escape(c['url'])}' alt=''>"
                 f"<figcaption><small><b>[{i}] {html.escape(c['query'])}</b>"
                 f"{html.escape(c['title'][:70])}<br>{html.escape(c['licence'])} · {c['w']}x{c['h']}"
-                f"<br><a href='{html.escape(c['page'])}'>source</a></small></figcaption></figure></div>")
+                f"<br><a href='{html.escape(c['page'])}' target='_blank' rel='noopener'>source</a>"
+                f"</small></figcaption></figure></div>")
         out.append("</div>")
     hits = sum(1 for r in rows if r["candidates"])
     out.append(f"<p><b>{hits}/{len(rows)} posts have at least one candidate.</b></p>")
+    out.append(
+        "<div id=bar><b>Chosen: <span id=n>0</span></b>"
+        " &nbsp;<button id=copy>Copy</button>"
+        "<textarea id=outjson readonly>{}</textarea></div>"
+        "<script>"
+        "const sel={};"
+        "document.querySelectorAll('.c').forEach(el=>el.addEventListener('click',e=>{"
+        "  if(e.target.tagName==='A')return;"
+        "  const p=el.dataset.post,i=+el.dataset.idx;"
+        "  const on=sel[p]===i;"
+        "  document.querySelectorAll(`.c[data-post='${p}']`).forEach(x=>x.classList.remove('sel'));"
+        "  if(on){delete sel[p];}else{sel[p]=i;el.classList.add('sel');}"
+        "  render();"
+        "}));"
+        "function render(){"
+        "  document.getElementById('n').textContent=Object.keys(sel).length;"
+        "  document.getElementById('outjson').value=JSON.stringify(sel,null,1);"
+        "}"
+        "document.getElementById('copy').addEventListener('click',()=>{"
+        "  const t=document.getElementById('outjson');t.select();"
+        "  try{document.execCommand('copy')}catch(e){}"
+        "});"
+        "render();"
+        "</script>")
     with open(path, "w") as fh:
         fh.write("\n".join(out))
 

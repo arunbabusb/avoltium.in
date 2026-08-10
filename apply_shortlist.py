@@ -13,14 +13,18 @@ article, an aircraft cylinder for balance-of-plant instrumentation). On a
 technical site a wrong photograph costs more than a plain one, so the
 selection stays advisory and a person approves it.
 
-Approval format — shortlist.json with "approved" set on the entries you want:
+Approvals come from the contact sheet: click the pictures you want, copy the
+box at the bottom into approvals.json. It is a post-id to candidate-index map,
 
-    [{"id": 1234, "approved": 0}, ...]      # 0 = first candidate, etc.
-    [{"id": 1235, "approved": null}, ...]   # or omit / null to skip
+    {"1234": 0, "1240": 2}
+
+meaning "post 1234 gets its first candidate, post 1240 its third". Any post
+not listed keeps the image it already has. Alternatively set "approved" on
+entries directly in shortlist.json.
 
 Usage:
-    python3 apply_shortlist.py                 # dry run, prints the plan
-    python3 apply_shortlist.py --execute       # upload and reassign
+    python3 apply_shortlist.py --approvals approvals.json             # dry run
+    python3 apply_shortlist.py --approvals approvals.json --execute   # apply
 """
 from __future__ import annotations
 
@@ -68,11 +72,28 @@ def chosen(row: dict) -> dict | None:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--shortlist", default="shortlist.json")
+    ap.add_argument("--approvals",
+                    help="JSON map of post id -> candidate index, as copied "
+                         "from the contact sheet")
     ap.add_argument("--execute", action="store_true",
                     help="actually upload and reassign; omit for a dry run")
     args = ap.parse_args()
 
     rows = load(args.shortlist)
+
+    if args.approvals:
+        with open(args.approvals) as fh:
+            picks = json.load(fh)
+        if not isinstance(picks, dict):
+            sys.exit(f"{args.approvals}: expected an object of post-id -> index")
+        known = {str(r["id"]) for r in rows}
+        for pid in set(picks) - known:
+            logger.warning("approval for post %s is not in %s — ignoring",
+                           pid, args.shortlist)
+        for r in rows:
+            if str(r["id"]) in picks:
+                r["approved"] = picks[str(r["id"])]
+
     plan = [(r, c) for r in rows if (c := chosen(r)) is not None]
     logger.info("%d of %d entries approved", len(plan), len(rows))
     if not plan:
