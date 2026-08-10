@@ -152,6 +152,7 @@ def recover(post: dict) -> bool:
 
 
 def publish(post_id: int, title: str, content: str, media_id: int | None) -> bool:
+    """Publish one held draft, attaching an excerpt and image where available."""
     payload = {"status": "publish"}
     if media_id:
         payload["featured_media"] = media_id
@@ -182,6 +183,7 @@ def publish(post_id: int, title: str, content: str, media_id: int | None) -> boo
 
 
 def main() -> int:
+    """Publish the drafts that now pass QC; exit non-zero if any are still held."""
     drafts = fetch_drafts()
     if not drafts:
         print("No drafts pending. Nothing to recover.", flush=True)

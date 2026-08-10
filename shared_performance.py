@@ -142,6 +142,7 @@ class CoreWebVitalsMonitor:
     """Monitor and track Core Web Vitals metrics."""
 
     def __init__(self, db_path: str = "web_vitals.db"):
+        """Open (creating if needed) the SQLite file that stores the metrics."""
         self.db_path = db_path
         self._init_db()
 

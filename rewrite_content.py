@@ -105,6 +105,7 @@ def sanitize(html: str) -> str:
     html = html.replace("```html", "").replace("```", "")
 
     def _fix_style(m):
+        """Rewrite one style="..." attribute with hyphenated property names."""
         val = m.group(1)
         for broken, good in _CSS_FIXES.items():
             val = re.sub(r"\b" + broken + r"\b", good, val, flags=re.IGNORECASE)
@@ -132,11 +133,13 @@ def extract_image_credit(html: str) -> str:
 
 
 def plain_text(html: str) -> str:
+    """HTML reduced to its visible text, whitespace collapsed."""
     text = re.sub(r"<[^>]+>", " ", html)
     return re.sub(r"\s+", " ", text).strip()
 
 
 def build_prompt(title: str, existing: str, mode: str) -> str:
+    """The rewrite prompt for one post, varying by `mode`."""
     shared_rules = """
 FORMATTING RULES (follow every one):
 
@@ -194,6 +197,7 @@ SOURCE ITEM (for factual context only — do not copy its wording):
 
 
 def call_gemini(prompt: str) -> str | None:
+    """Generate text for a prompt, or None if every model failed."""
     text, _model = resilient.generate_text(
         GEMINI_API_KEY,
         prompt,
@@ -206,12 +210,23 @@ def call_gemini(prompt: str) -> str | None:
 
 
 def make_excerpt(html: str) -> str:
+    """A meta description, taken from the Engineering Insight box where present.
+
+    An empty excerpt lets Google invent its own snippet — see §7 of
+    editorial_standards.md.
+    """
     m = re.search(r"Engineering Insight:</strong>\s*(.*?)</div>", html, re.DOTALL)
     text = plain_text(m.group(1) if m else html)
     return text[:152] + "..." if len(text) > 155 else text
 
 
 def process(post_id: int, mode: str, backup: dict) -> bool:
+    """Rewrite one post, recording the original in `backup` first.
+
+    The backup happens before the write and is the only copy of the original
+    body, so a re-run that skipped it would destroy what it is meant to
+    protect.
+    """
     res = resilient.request_with_retry(
         "GET",
         f"{WP_URL}/wp-json/wp/v2/posts/{post_id}",
@@ -276,6 +291,7 @@ def process(post_id: int, mode: str, backup: dict) -> bool:
 
 
 def main() -> None:
+    """Rewrite the listed posts, or only those named in RETRY_POST_IDS."""
     backup: dict = {}
     done = 0
     targets = [(pid, "stub") for pid in STUB_POSTS + HELD_DRAFT_STUBS] + \

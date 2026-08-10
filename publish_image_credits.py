@@ -42,6 +42,7 @@ NEEDS_CREDIT = re.compile(r"\bCC\s*BY\b", re.I)
 
 
 def fetch_all(s, endpoint, **params):
+    """Every item from a paginated REST endpoint."""
     out, page = [], 1
     while True:
         r = s.get(endpoint, params={"per_page": 100, "page": page, **params}, timeout=60)
@@ -58,6 +59,7 @@ def fetch_all(s, endpoint, **params):
 
 
 def credit_html(caption_text: str, source_page: str) -> str:
+    """The credit paragraph, wrapped in sentinels so a re-run replaces it."""
     text = html.escape(caption_text.strip().rstrip("."))
     if source_page:
         link = html.escape(source_page)
@@ -66,6 +68,11 @@ def credit_html(caption_text: str, source_page: str) -> str:
 
 
 def main() -> int:
+    """Write the image credit into the body of every post that needs one.
+
+    The caption stored on the attachment is not enough: the theme never
+    renders it, so a CC BY image was live with its credit visible nowhere.
+    """
     ap = argparse.ArgumentParser()
     ap.add_argument("--execute", action="store_true")
     args = ap.parse_args()

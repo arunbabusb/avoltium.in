@@ -180,6 +180,7 @@ def attach_image(item) -> dict | None:
 
 
 def existing_titles(limit: int = 200) -> set[str]:
+    """Normalised titles already on the site, for skipping stories we ran."""
     out, page = set(), 1
     while len(out) < limit:
         r = requests.get(POSTS_READ, params={"per_page": 100, "page": page,
@@ -213,6 +214,11 @@ def sources_block(item: news_sources.NewsItem) -> str:
 
 
 def write_article(item: news_sources.NewsItem) -> str | None:
+    """Draft the article body for one news item, or None if it cannot be written.
+
+    The prompt is allowed to answer NOT_ENOUGH when the feed summary does not
+    support an article; that reply is honoured rather than published.
+    """
     body, model = resilient.generate_text(
         GEMINI_API_KEY,
         PROMPT.format(title=item.title, publisher=item.publisher,
@@ -236,6 +242,7 @@ def write_article(item: news_sources.NewsItem) -> str | None:
 
 
 def main() -> int:
+    """Publish the day's news articles, split between Indian and global feeds."""
     ap = argparse.ArgumentParser()
     ap.add_argument("--count", type=int, default=3, help="total articles (default 3)")
     ap.add_argument("--india", type=int)
@@ -259,6 +266,7 @@ def main() -> int:
 
     seen = existing_titles()
     def fresh(items):
+        """Items whose titles are not already published on the site."""
         return [i for i in items
                 if re.sub(r"[^a-z0-9]+", "", i.title.lower())[:60] not in seen]
 

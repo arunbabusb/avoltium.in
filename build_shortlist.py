@@ -89,15 +89,22 @@ TOPN = 3
 
 
 def toks(text: str) -> list[str]:
+    """Lowercase word tokens, minus stop words and anything under three letters."""
     return [w for w in re.findall(r"[a-z][a-z0-9-]+", (text or "").lower())
             if len(w) > 2 and w not in STOP]
 
 
 def bigrams(words: list[str]) -> list[str]:
+    """Adjacent word pairs, the unit this scores relevance on.
+
+    Single words are too ambiguous to search on — "cell" alone returns
+    biology — so the shortlist works in two-word phrases throughout.
+    """
     return [" ".join(words[i:i + 2]) for i in range(len(words) - 1)]
 
 
 def fetch_posts(s, per_page: int = 100) -> list[dict]:
+    """Every published post with title, body and current image, paginated."""
     out, page = [], 1
     while True:
         r = s.get(POSTS_READ, params={"per_page": per_page, "page": page,
@@ -116,6 +123,11 @@ def fetch_posts(s, per_page: int = 100) -> list[dict]:
 
 
 def prepare(posts: list[dict]):
+    """Tokenise the corpus and count in how many documents each bigram appears.
+
+    Returns (docs, document-frequency counter, document count) — the three
+    inputs tf-idf needs.
+    """
     docs = []
     for p in posts:
         title = re.sub(r"<[^>]+>", "", p["title"]["rendered"])
@@ -133,6 +145,13 @@ def prepare(posts: list[dict]):
 
 
 def subjects(doc: dict, df: collections.Counter, n_docs: int, k: int = 6) -> list[str]:
+    """The `k` most distinctive concrete noun phrases in one document.
+
+    Scored tf-idf, so a phrase that appears in every article on the site
+    scores near zero however often this one repeats it. Phrases are kept only
+    when one of the two words names something photographable; an abstraction
+    produces a search query no image can satisfy.
+    """
     scored = []
     for phrase, tf in doc["counts"].items():
         a, b = phrase.split()
@@ -146,6 +165,13 @@ def subjects(doc: dict, df: collections.Counter, n_docs: int, k: int = 6) -> lis
 
 
 def accepts(cand, query: str, doc: dict) -> bool:
+    """Whether a candidate image is close enough to the article to offer.
+
+    Two gates. The query has to appear in the candidate's own title, and
+    enough of the remaining words in that title have to occur in the article
+    body — the second is what rejects a correctly-named photograph of a
+    different subject.
+    """
     name = cand.title.lower()
     if JUNK.search(name):
         return False
@@ -157,6 +183,11 @@ def accepts(cand, query: str, doc: dict) -> bool:
 
 
 def candidates_for(doc, df, n_docs, used: set) -> list[tuple]:
+    """Up to TOPN unused candidates for one document, largest first.
+
+    Search failures are logged and skipped rather than raised: one dead
+    subject must not cost the other thirty-seven posts their shortlist.
+    """
     found = []
     for query in subjects(doc, df, n_docs):
         try:
@@ -173,6 +204,12 @@ def candidates_for(doc, df, n_docs, used: set) -> list[tuple]:
 
 
 def render_html(rows: list[dict], path: str) -> None:
+    """Write the contact sheet — every candidate, clickable, with its licence.
+
+    The point of the page is that a human sees the actual pictures before any
+    of them go near the site. Filenames were trusted once and produced a
+    street with a scooter on it under the caption "IISc hydrogen plant".
+    """
     css = ("body{font:14px/1.45 system-ui,sans-serif;max-width:1100px;margin:2rem auto;padding:0 1rem}"
            "img{width:230px;height:150px;object-fit:cover;border-radius:6px;background:#eee}"
            "figure{margin:0}.row{border-top:1px solid #ddd;padding:14px 0}"
@@ -241,6 +278,7 @@ def render_html(rows: list[dict], path: str) -> None:
 
 
 def main() -> int:
+    """Build the shortlist and contact sheet. Writes nothing to WordPress."""
     ap = argparse.ArgumentParser()
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--json", default="shortlist.json")

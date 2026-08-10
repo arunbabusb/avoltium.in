@@ -113,6 +113,7 @@ reported through <a href="/corrections/">corrections</a>.</p>
 
 
 def upsert(s, slug: str, title: str, body: str, execute: bool) -> bool:
+    """Create or update one page by slug. True when the write succeeded."""
     found = s.get(PAGES, params={"slug": slug, "status": "publish,draft"}, timeout=60).json()
     payload = {"title": title, "slug": slug, "content": body.strip(), "status": "publish"}
     if not execute:
@@ -128,6 +129,11 @@ def upsert(s, slug: str, title: str, body: str, execute: bool) -> bool:
 
 
 def main() -> int:
+    """Publish the transparency pages Google Publisher Center expects.
+
+    Refuses to publish an ownership page that still contains the placeholder
+    text unless told to explicitly.
+    """
     ap = argparse.ArgumentParser()
     ap.add_argument("--entity", default=f"{PLACEHOLDER} — registered name of the operating entity")
     ap.add_argument("--location", default=f"{PLACEHOLDER} — city and country of operation")

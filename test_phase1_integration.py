@@ -40,6 +40,7 @@ class TestTokenCache(unittest.TestCase):
     """Test token caching system"""
 
     def setUp(self):
+        """Point the cache at a throwaway SQLite file for this test."""
         if not CACHE_AVAILABLE:
             self.skipTest("token_cache module not available")
         self.temp_db = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
@@ -47,6 +48,7 @@ class TestTokenCache(unittest.TestCase):
         self.cache = TokenCache(self.temp_db.name)
 
     def tearDown(self):
+        """Delete the throwaway SQLite file."""
         if os.path.exists(self.temp_db.name):
             os.remove(self.temp_db.name)
 
@@ -120,6 +122,7 @@ class TestSEOInfrastructure(unittest.TestCase):
     """Test SEO infrastructure generation"""
 
     def setUp(self):
+        """Skip the class when the SEO module is not importable."""
         if not SEO_AVAILABLE:
             self.skipTest("seo_infrastructure module not available")
 
@@ -232,6 +235,7 @@ class TestPerformanceOptimization(unittest.TestCase):
     """Test performance optimization utilities"""
 
     def setUp(self):
+        """Skip the class when the performance module is not importable."""
         if not PERF_AVAILABLE:
             self.skipTest("shared_performance module not available")
 

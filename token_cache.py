@@ -22,6 +22,7 @@ class TokenCache:
     """SQLite-based cache for generated content and API responses."""
 
     def __init__(self, db_path: str = "token_cache.db"):
+        """Open (creating if needed) the SQLite file backing the cache."""
         self.db_path = db_path
         self._init_db()
 

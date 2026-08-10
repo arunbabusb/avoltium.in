@@ -5,6 +5,16 @@
 #     "python-dotenv"
 # ]
 # ///
+"""Generate and publish one technical article, end to end.
+
+Picks an uncovered topic, drafts it with a model, repairs the known HTML
+defects, attaches a figure — a rendered diagram where the subject has one, a
+licensed photograph otherwise — and gates the whole thing on qc_check before
+anything reaches the site. A post that fails a blocker is held as a draft
+rather than published.
+
+Run by .github/workflows/publish_article.yml; also runnable by hand.
+"""
 import datetime
 import io
 import os
@@ -365,6 +375,7 @@ def sanitize_content(html: str) -> str:
 
     # 2. Fix broken CSS property names (missing hyphens) inside inline style attributes
     def _fix_inline_style(m):
+        """Rewrite one style="..." attribute with hyphenated property names."""
         style_val = m.group(1)
         for broken, fixed in _CSS_FIXES.items():
             style_val = re.sub(r"\b" + re.escape(broken) + r"\b", fixed, style_val, flags=re.IGNORECASE)
@@ -472,6 +483,7 @@ def choose_featured_image(topic: str) -> dict | None:
 
 
 def _slugify(text: str, limit: int = 48) -> str:
+    """Lowercase hyphenated slug for an upload filename, capped at `limit`."""
     s = re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
     return s[:limit].rstrip("-") or "featured"
 
@@ -671,6 +683,7 @@ def upload_image_to_wp(
 
 
 def _normalize_title(t: str) -> str:
+    """Title reduced to bare alphanumerics, for comparing two titles."""
     return re.sub(r"[^a-z0-9]+", "", t.lower())
 
 
@@ -730,6 +743,7 @@ def make_excerpt(html: str) -> str:
 
 
 def build_gemini_prompt(topic: str) -> str:
+    """The full drafting prompt for one topic, formatting rules included."""
     return f"""You are Arun, the Chief Engineer at Avoltium.
 Write a highly technical, professional 1,200-word engineering article on: "{topic}".
 
@@ -776,6 +790,7 @@ Write a highly technical, professional 1,200-word engineering article on: "{topi
 # ─── Main ────────────────────────────────────────────────────────────────────
 
 def main() -> None:
+    """Generate one article and publish it, or hold it as a draft if QC fails."""
     topic, post_title = pick_topic()
     print(f"Selected topic: {topic}", flush=True)
     if post_title != topic:

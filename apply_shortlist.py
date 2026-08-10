@@ -49,6 +49,7 @@ USER_AGENT = os.environ.get(
 
 
 def load(path: str) -> list[dict]:
+    """Read a shortlist JSON file, failing loudly if it is not a list."""
     with open(path) as fh:
         rows = json.load(fh)
     if not isinstance(rows, list):
@@ -70,6 +71,12 @@ def chosen(row: dict) -> dict | None:
 
 
 def main() -> int:
+    """Upload and assign the approved candidate for each shortlist entry.
+
+    Entries without an approval are left alone — an unapproved post keeps the
+    image it already has, which is the correct outcome when no candidate was
+    right.
+    """
     ap = argparse.ArgumentParser()
     ap.add_argument("--shortlist", default="shortlist.json")
     ap.add_argument("--approvals",

@@ -50,6 +50,7 @@ ACCENT_SOFT = (222, 236, 244)
 
 
 def _font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont:
+    """A TrueType face at `size`, falling back to Pillow's bitmap font."""
     names = (["DejaVuSans-Bold.ttf", "LiberationSans-Bold.ttf"] if bold
              else ["DejaVuSans.ttf", "LiberationSans-Regular.ttf"])
     for name in names:
@@ -65,12 +66,14 @@ def _font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont:
 
 @dataclass
 class Stage:
+    """One labelled box in a diagram, with optional second-line detail."""
     label: str
     detail: str = ""
 
 
 @dataclass
 class Diagram:
+    """A figure: a title, a caption, and the boxes to draw between them."""
     title: str
     caption: str
     stages: List[Stage] = field(default_factory=list)
@@ -132,6 +135,7 @@ def _wrap(draw, text, font, max_width) -> List[str]:
 
 
 def render(diagram: Diagram) -> Image.Image:
+    """Draw a diagram to an RGB image at the module's fixed canvas size."""
     img = Image.new("RGB", (WIDTH, HEIGHT), BG)
     d = ImageDraw.Draw(img)
 
@@ -562,6 +566,7 @@ def diagram_for(title: str) -> Optional[Diagram]:
 
 
 def render_for_title(title: str, out_path: str) -> Optional[str]:
+    """Render the diagram matching `title` to `out_path`, or None if none match."""
     diagram = diagram_for(title)
     if diagram is None:
         return None

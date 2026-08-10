@@ -44,15 +44,18 @@ def md_to_html(md: str) -> str:
     bullets: list[str] = []
 
     def flush_bullets():
+        """Close any open bullet list."""
         if bullets:
             out.append("<ul>" + "".join(f"<li>{b}</li>" for b in bullets) + "</ul>")
             bullets.clear()
 
     def flush_rows():
+        """Close any open table, dropping the |---| separator row."""
         if not rows:
             return
         head, body = rows[0], [r for r in rows[1:] if not set(r.replace("|", "").strip()) <= set("-: ")]
         def cells(r, tag):
+            """One table row rendered as `tag` cells."""
             return "".join(f"<{tag}>{inline(c.strip())}</{tag}>"
                            for c in r.strip().strip("|").split("|"))
         out.append("<table><thead><tr>" + cells(head, "th") + "</tr></thead><tbody>"
@@ -61,6 +64,7 @@ def md_to_html(md: str) -> str:
         rows.clear()
 
     def inline(t: str) -> str:
+        """Escape a line and apply the inline spans: code, bold, italic."""
         t = html.escape(t)
         t = re.sub(r"`([^`]+)`", r"<code>\1</code>", t)
         t = re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", t)
@@ -99,6 +103,7 @@ def md_to_html(md: str) -> str:
 
 
 def main() -> int:
+    """Publish editorial_standards.md as /editorial-standards/. Dry run by default."""
     ap = argparse.ArgumentParser()
     ap.add_argument("--execute", action="store_true")
     args = ap.parse_args()

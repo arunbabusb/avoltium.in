@@ -20,6 +20,7 @@ FAIL = 0
 
 
 def check(label, got, want):
+    """Record one assertion, printing PASS or FAIL and counting failures."""
     global FAIL
     ok = got == want
     print(f"  {'PASS' if ok else 'FAIL'}: {label}" + ("" if ok else f" -> got {got!r}, want {want!r}"))

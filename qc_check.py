@@ -74,6 +74,7 @@ MAX_ASPECT_RATIO = 2.4      # ultrawide banners crop badly in card layouts
 
 
 def plain_text(html: str) -> str:
+    """HTML reduced to its visible text, whitespace collapsed."""
     return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", html)).strip()
 
 
@@ -81,6 +82,7 @@ def plain_text(html: str) -> str:
 # Each returns a list of (severity, message). severity: "BLOCKER" | "WARN".
 
 def check_content(html: str) -> list[tuple[str, str]]:
+    """Check an article body. Returns (severity, message) pairs."""
     issues: list[tuple[str, str]] = []
     body = plain_text(html)
 
@@ -124,6 +126,7 @@ def check_content(html: str) -> list[tuple[str, str]]:
 
 
 def check_title(title: str) -> list[tuple[str, str]]:
+    """Check an article title. Returns (severity, message) pairs."""
     issues: list[tuple[str, str]] = []
     if len(title) < 15:
         issues.append(("BLOCKER", f"title too short: {title!r}"))
@@ -179,12 +182,14 @@ def check_post(title: str, html: str, media: dict | None) -> list[tuple[str, str
 
 
 def blockers(issues: list[tuple[str, str]]) -> list[str]:
+    """The messages from `issues` that must stop a publish."""
     return [m for sev, m in issues if sev == "BLOCKER"]
 
 
 # ── Standalone site audit ────────────────────────────────────────────────────
 
 def audit() -> int:
+    """Run the checks against every published post and report. Writes nothing."""
     wp = os.environ.get("WP_URL", "https://www.avoltium.in").rstrip("/")
     user = os.environ.get("WP_USERNAME")
     pw = os.environ.get("WP_APP_PASSWORD")
@@ -226,6 +231,7 @@ def audit() -> int:
     media_cache: dict[int, dict] = {}
 
     def media_for(mid):
+        """An attachment's metadata, cached, or None when there is no image."""
         if not mid:
             return None
         if mid not in media_cache:

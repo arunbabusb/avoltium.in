@@ -33,6 +33,7 @@ logger = logging.getLogger("diagrams")
 
 
 def fetch_posts(s):
+    """Every published post, as id and title only, following pagination."""
     out, page = [], 1
     while True:
         r = s.get(POSTS_READ, params={"per_page": 100, "page": page,
@@ -50,6 +51,11 @@ def fetch_posts(s):
 
 
 def main() -> int:
+    """Render the matching figure for each named post and set it as featured.
+
+    Dry run by default: prints what it would draw and for which post, so the
+    pairing can be read before anything on the live site changes.
+    """
     ap = argparse.ArgumentParser()
     ap.add_argument("ids", nargs="*", type=int)
     ap.add_argument("--all", action="store_true",

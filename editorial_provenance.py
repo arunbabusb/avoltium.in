@@ -104,6 +104,11 @@ def further_reading(title: str) -> list[tuple[str, str]]:
 
 
 def build_block(title: str, reviewer: str, role: str, reviewed: str) -> str:
+    """Build the provenance aside, wrapped in the sentinel comments.
+
+    The sentinels are what make this idempotent: a later run substitutes the
+    block in place instead of appending a second copy.
+    """
     links = "".join(
         f'<li><a href="{html.escape(u)}" rel="nofollow noopener" '
         f'target="_blank">{html.escape(l)}</a></li>'
@@ -134,6 +139,7 @@ def build_block(title: str, reviewer: str, role: str, reviewed: str) -> str:
 
 
 def fetch_all(s):
+    """Every published post with the fields this script needs, paginated."""
     out, page = [], 1
     while True:
         r = s.get(POSTS_READ, params={"per_page": 100, "page": page,
@@ -151,6 +157,7 @@ def fetch_all(s):
 
 
 def main() -> int:
+    """Add or refresh the provenance block on every post. Dry run by default."""
     ap = argparse.ArgumentParser()
     ap.add_argument("--reviewer", default=DEFAULT_REVIEWER)
     ap.add_argument("--role", default=DEFAULT_ROLE)

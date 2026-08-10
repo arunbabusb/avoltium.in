@@ -114,6 +114,7 @@ CSS = """
 
 
 def build_html(include_phone: bool = False) -> str:
+    """The profile page markup. The phone number is opt-in."""
     contact = f'<a href="mailto:{EMAIL}">{EMAIL}</a>'
     if include_phone:
         contact += f' &nbsp;·&nbsp; <a href="tel:{PHONE.replace("-", "")}">{PHONE}</a>'
@@ -235,6 +236,7 @@ def build_html(include_phone: bool = False) -> str:
 
 
 def session() -> requests.Session:
+    """A requests session carrying the WordPress application-password auth."""
     s = requests.Session()
     s.auth = (WP_USERNAME, WP_APP_PASSWORD)
     s.headers.update({"User-Agent": "avoltium-profile/1.0"})
@@ -242,6 +244,7 @@ def session() -> requests.Session:
 
 
 def find_page(s: requests.Session, slug: str):
+    """The page with this slug, or None if there is not exactly one to find."""
     r = s.get(PAGES_READ, params={"slug": slug, "status": "publish,draft"}, timeout=30)
     if r.status_code != 200:
         logger.error("Lookup of /%s failed: HTTP %s", slug, r.status_code)
@@ -251,6 +254,7 @@ def find_page(s: requests.Session, slug: str):
 
 
 def main() -> int:
+    """Publish the profile page. Dry run by default; writes the HTML to --out."""
     ap = argparse.ArgumentParser()
     ap.add_argument("--execute", action="store_true")
     ap.add_argument("--slug", default=SLUG)

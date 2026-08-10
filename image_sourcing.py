@@ -95,6 +95,7 @@ NEEDS_CREDIT = {"cc by", "cc-by", "by", "cc by-sa", "cc-by-sa", "by-sa",
 
 @dataclass
 class SourcedImage:
+    """One candidate image and everything needed to credit and filter it."""
     url: str
     width: int
     height: int
@@ -106,6 +107,7 @@ class SourcedImage:
 
     @property
     def needs_credit(self) -> bool:
+        """Whether the licence obliges a visible credit line."""
         return _licence_key(self.licence) in NEEDS_CREDIT
 
     def attribution_html(self) -> str:
@@ -124,6 +126,7 @@ class SourcedImage:
 
 
 def _licence_key(lic: str) -> str:
+    """Normalise a licence string to a comparable key, e.g. "cc by-sa"."""
     k = (lic or "").strip().lower()
     # Drop the version only when it is a separate word: "CC BY-SA 4.0" -> "cc by-sa".
     # Matching without requiring the space turned "cc0" into "cc" and silently
@@ -134,6 +137,7 @@ def _licence_key(lic: str) -> str:
 
 
 def licence_allowed(lic: str) -> bool:
+    """Whether this licence permits use on the site at all."""
     return _licence_key(lic) in ALLOWED_LICENCES
 
 
@@ -164,16 +168,19 @@ def is_relevant(query: str, candidate_text: str, min_overlap: int = 1) -> bool:
 
 
 def _get_json(url: str, timeout: int = 45):
+    """GET a URL and parse the JSON body."""
     req = urllib.request.Request(url, headers=_HEADERS)
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         return json.load(resp)
 
 
 def _strip_tags(s: str) -> str:
+    """Strip HTML tags from a metadata string."""
     return re.sub(r"<[^>]+>", "", s or "").strip()
 
 
 def search_wikimedia(query: str, limit: int = 12) -> List[SourcedImage]:
+    """Search Wikimedia Commons. Returns [] on any API failure."""
     url = (
         "https://commons.wikimedia.org/w/api.php?action=query&format=json"
         "&generator=search&gsrnamespace=6"
@@ -215,6 +222,7 @@ def search_wikimedia(query: str, limit: int = 12) -> List[SourcedImage]:
 
 
 def search_openverse(query: str, limit: int = 12) -> List[SourcedImage]:
+    """Search Openverse. Returns [] on any API failure."""
     url = (
         "https://api.openverse.org/v1/images/"
         f"?q={urllib.parse.quote(query)}&page_size={limit}"

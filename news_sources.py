@@ -65,6 +65,7 @@ NOISE = re.compile(r"\b(webinar|podcast|subscribe|newsletter|photo of the day|"
 
 @dataclass
 class NewsItem:
+    """One item from a publisher's feed, normalised across feed formats."""
     title: str
     link: str
     publisher: str
@@ -73,10 +74,12 @@ class NewsItem:
     region: str          # "india" | "global"
 
     def age_hours(self) -> float:
+        """Hours since publication."""
         return (datetime.now(timezone.utc) - self.published).total_seconds() / 3600
 
 
 def _text(el, *names) -> str:
+    """The first non-empty child element among `names`, tags stripped."""
     for n in names:
         v = el.findtext(n)
         if v:
@@ -107,6 +110,7 @@ def _parse_date(raw: str) -> datetime | None:
 
 
 def fetch_feed(name: str, url: str, region: str) -> List[NewsItem]:
+    """Parse one RSS feed into items. Returns [] rather than raising."""
     try:
         req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
         root = ET.fromstring(urllib.request.urlopen(req, timeout=40).read())
@@ -141,6 +145,7 @@ def fetch_feed(name: str, url: str, region: str) -> List[NewsItem]:
 
 
 def _norm(t: str) -> str:
+    """Title reduced to bare alphanumerics, truncated — the de-duplication key."""
     return re.sub(r"[^a-z0-9]+", "", t.lower())[:60]
 
 
@@ -156,6 +161,7 @@ def collect(max_age_hours: int = 36) -> tuple[List[NewsItem], List[NewsItem], in
             bucket.extend(items)
 
     def clean(items: List[NewsItem]) -> List[NewsItem]:
+        """Drop stale, off-topic and duplicate items, newest first."""
         seen, out = set(), []
         for i in sorted(items, key=lambda x: x.published, reverse=True):
             if i.age_hours() > max_age_hours:

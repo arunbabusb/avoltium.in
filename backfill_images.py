@@ -47,6 +47,7 @@ MEDIA_WRITE = f"{WP_URL}/?rest_route=/wp/v2/media"
 
 
 def session() -> requests.Session:
+    """A requests session carrying the WordPress application-password auth."""
     s = requests.Session()
     s.auth = (WP_USERNAME, WP_APP_PASSWORD)
     s.headers.update({"User-Agent": "avoltium-backfill/1.0"})
@@ -54,11 +55,17 @@ def session() -> requests.Session:
 
 
 def slugify(text: str, limit: int = 48) -> str:
+    """Lowercase hyphenated slug for a filename, capped at `limit` characters.
+
+    The result is public: WordPress serves the uploaded file at a URL built
+    from this, so a working title leaks if it is passed in here.
+    """
     s = re.sub(r"[^a-z0-9]+", "-", (text or "").lower()).strip("-")
     return (s[:limit].rstrip("-")) or "figure"
 
 
 def fetch_posts(s: requests.Session, per_page: int = 100):
+    """Every published post with the fields this script needs, paginated."""
     out, page = [], 1
     while True:
         r = s.get(POSTS_READ, params={"per_page": per_page, "page": page,
@@ -116,6 +123,11 @@ def compress(data: bytes, filename: str) -> tuple[bytes, str, str]:
 
 def upload(s: requests.Session, data: bytes, filename: str, mime: str,
            alt: str, caption: str = "") -> int | None:
+    """Upload bytes to the media library and return the new attachment id.
+
+    Returns None when the upload is rejected, so the caller can skip the post
+    rather than assign a featured image that does not exist.
+    """
     r = s.post(MEDIA_WRITE, data=data, timeout=120, headers={
         "Content-Type": mime,
         "Content-Disposition": f'attachment; filename="{filename}"',
@@ -132,10 +144,15 @@ def upload(s: requests.Session, data: bytes, filename: str, mime: str,
 
 
 def plain_title(post) -> str:
+    """The post title with HTML tags and entities removed."""
     return html.unescape(re.sub(r"<[^>]+>", "", post["title"]["rendered"])).strip()
 
 
 def main() -> int:
+    """Assign a diagram or a licensed photo to every post that has no image.
+
+    Dry run by default; `--execute` performs the uploads.
+    """
     ap = argparse.ArgumentParser()
     ap.add_argument("--execute", action="store_true")
     ap.add_argument("--limit", type=int, default=0, help="0 = all matching posts")

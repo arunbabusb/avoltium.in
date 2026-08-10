@@ -167,6 +167,12 @@ add_filter('robots_txt', function ($output) {
 
 
 def snippets(auth):
+    """The installed snippets, retrying while the API returns an error object.
+
+    Code Snippets answers with a dict rather than a list while the plugin is
+    still warming up; treating that as the snippet list would install a
+    duplicate of one that already exists.
+    """
     for _ in range(8):
         d = requests.get(CS, auth=auth, timeout=60, headers=H,
                          params={"_ts": time.time()}).json()
@@ -177,6 +183,7 @@ def snippets(auth):
 
 
 def main() -> int:
+    """Install or update the schema and news-sitemap snippet. Dry run by default."""
     ap = argparse.ArgumentParser()
     ap.add_argument("--execute", action="store_true")
     args = ap.parse_args()
