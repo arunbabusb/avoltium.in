@@ -1,0 +1,61 @@
+name: Publish sourced news
+
+# Twice a day, three articles total. The cadence is deliberate: Google's
+# scaled content abuse policy targets high-volume generated publishing, and
+# the aim here is a site that survives Publisher Center review, so this stays
+# at three a day rather than the ten that was first considered.
+#
+# Times are UTC. 04:10 lands mid-morning in India, 13:40 catches the European
+# and US morning wires.
+on:
+  schedule:
+    - cron: "10 4 * * *"
+    - cron: "40 13 * * *"
+  workflow_dispatch:
+    inputs:
+      count:
+        description: "Total articles to publish"
+        required: false
+        default: "3"
+      dry_run:
+        description: "Select and log only, publish nothing"
+        type: boolean
+        required: false
+        default: false
+
+concurrency:
+  group: publish-news
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install requests pillow python-dotenv
+
+      - name: Show what the feeds are offering
+        run: python news_sources.py
+
+      - name: Publish
+        env:
+          WP_URL: ${{ secrets.WP_URL }}
+          WP_USERNAME: ${{ secrets.WP_USERNAME }}
+          WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          OMNIROUTE_BASE_URL: ${{ secrets.OMNIROUTE_BASE_URL }}
+          OMNIROUTE_API_KEY: ${{ secrets.OMNIROUTE_API_KEY }}
+        run: |
+          COUNT="${{ inputs.count || '3' }}"
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            python publish_news.py --count "$COUNT"
+          else
+            python publish_news.py --count "$COUNT" --execute
+          fi
