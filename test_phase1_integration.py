@@ -281,14 +281,14 @@ class TestPerformanceOptimization(unittest.TestCase):
         monitor.record_metrics(
             url="https://example.com/",
             lcp=2100,
-            fid=75,
+            inp=150,
             cls=0.08
         )
 
         # Check report
         report = monitor.get_metrics_report(days=30)
         self.assertEqual(report['metrics']['LCP']['value'], 2100)
-        self.assertEqual(report['metrics']['FID']['value'], 75)
+        self.assertEqual(report['metrics']['INP']['value'], 150)
         self.assertEqual(report['metrics']['CLS']['value'], 0.08)
 
         os.remove(db_path)

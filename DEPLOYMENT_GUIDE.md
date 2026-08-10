@@ -296,7 +296,7 @@ curl -I https://avoltium.in | grep "Server:"
 | Metric | Target | Status |
 |--------|--------|--------|
 | LCP | <2.5s | ⏳ |
-| FID | <100ms | ⏳ |
+| INP | <200ms | ⏳ |
 | CLS | <0.1 | ⏳ |
 | Sitemap indexed | 100+ | ⏳ |
 | Cache hit rate | >30% | ⏳ |

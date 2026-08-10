@@ -192,7 +192,7 @@ cache.cache_content(topic=cache_key, content=json.dumps(results),
 | Token cost reduction | -50% | ✅ Integration ready |
 | Cache hit rate | >30% | ✅ Code tested |
 | Core Web Vitals (LCP) | <2.5s | ✅ Tools deployed |
-| Core Web Vitals (FID) | <100ms | ✅ Tools deployed |
+| Core Web Vitals (INP) | <200ms | ✅ Tools deployed |
 | Core Web Vitals (CLS) | <0.1 | ✅ Tools deployed |
 | GSC indexing | 100%+ | ✅ Setup guide ready |
 | API call reduction (JSearch) | -30% | ✅ Integration ready |

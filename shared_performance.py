@@ -155,7 +155,7 @@ class CoreWebVitalsMonitor:
                     id INTEGER PRIMARY KEY,
                     url TEXT NOT NULL,
                     lcp REAL,
-                    fid REAL,
+                    inp REAL,
                     cls REAL,
                     ttfb REAL,
                     fcp REAL,
@@ -168,7 +168,7 @@ class CoreWebVitalsMonitor:
         self,
         url: str,
         lcp: Optional[float] = None,
-        fid: Optional[float] = None,
+        inp: Optional[float] = None,
         cls: Optional[float] = None,
         ttfb: Optional[float] = None,
         fcp: Optional[float] = None
@@ -177,9 +177,9 @@ class CoreWebVitalsMonitor:
         import sqlite3
         with sqlite3.connect(self.db_path) as conn:
             conn.execute("""
-                INSERT INTO web_vitals (url, lcp, fid, cls, ttfb, fcp)
+                INSERT INTO web_vitals (url, lcp, inp, cls, ttfb, fcp)
                 VALUES (?, ?, ?, ?, ?, ?)
-            """, (url, lcp, fid, cls, ttfb, fcp))
+            """, (url, lcp, inp, cls, ttfb, fcp))
             conn.commit()
 
     def get_metrics_report(self, days: int = 30) -> Dict[str, Any]:
@@ -189,7 +189,7 @@ class CoreWebVitalsMonitor:
             cursor = conn.execute("""
                 SELECT
                     AVG(lcp) as avg_lcp,
-                    AVG(fid) as avg_fid,
+                    AVG(inp) as avg_inp,
                     AVG(cls) as avg_cls,
                     AVG(ttfb) as avg_ttfb,
                     AVG(fcp) as avg_fcp,
@@ -200,39 +200,29 @@ class CoreWebVitalsMonitor:
 
             result = cursor.fetchone()
 
+        def entry(value, unit, target):
+            """One metric, with "no_data" kept distinct from a failing score."""
+            # AVG() over a column nothing was recorded into returns NULL.
+            # Reporting that as "needs_improvement" invents a bad score out of
+            # an empty table, which is how you end up chasing a regression
+            # that never happened.
+            if value is None:
+                status = "no_data"
+            else:
+                status = "good" if value <= target else "needs_improvement"
+            return {"value": value, "unit": unit, "target": target, "status": status}
+
         return {
             "period_days": days,
             "metrics": {
-                "LCP": {
-                    "value": result[0],
-                    "unit": "ms",
-                    "target": 2500,
-                    "status": "good" if result[0] and result[0] <= 2500 else "needs_improvement"
-                },
-                "FID": {
-                    "value": result[1],
-                    "unit": "ms",
-                    "target": 100,
-                    "status": "good" if result[1] and result[1] <= 100 else "needs_improvement"
-                },
-                "CLS": {
-                    "value": result[2],
-                    "unit": "",
-                    "target": 0.1,
-                    "status": "good" if result[2] and result[2] <= 0.1 else "needs_improvement"
-                },
-                "TTFB": {
-                    "value": result[3],
-                    "unit": "ms",
-                    "target": 600,
-                    "status": "good" if result[3] and result[3] <= 600 else "needs_improvement"
-                },
-                "FCP": {
-                    "value": result[4],
-                    "unit": "ms",
-                    "target": 1800,
-                    "status": "good" if result[4] and result[4] <= 1800 else "needs_improvement"
-                }
+                "LCP": entry(result[0], "ms", 2500),
+                # INP replaced FID as a Core Web Vital in March 2024. The
+                # threshold is 200 ms, not FID's 100 ms, and it measures the
+                # whole interaction rather than only the delay before handling.
+                "INP": entry(result[1], "ms", 200),
+                "CLS": entry(result[2], "", 0.1),
+                "TTFB": entry(result[3], "ms", 600),
+                "FCP": entry(result[4], "ms", 1800),
             },
             "samples": result[5]
         }
@@ -377,10 +367,10 @@ class PerformanceBudget:
             "unit": "ms",
             "metric": "Largest Contentful Paint"
         },
-        "fid": {
-            "value": 100,
+        "inp": {
+            "value": 200,
             "unit": "ms",
-            "metric": "First Input Delay"
+            "metric": "Interaction to Next Paint"
         },
         "cls": {
             "value": 0.1,
@@ -438,14 +428,23 @@ if __name__ == "__main__":
 
     # 3. Core Web Vitals
     monitor = CoreWebVitalsMonitor()
-    monitor.record_metrics("https://example.com/", lcp=2100, fid=75, cls=0.08)
-    monitor.record_metrics("https://example.com/products", lcp=2800, fid=120, cls=0.12)
+    monitor.record_metrics("https://example.com/", lcp=2100, inp=150, cls=0.08)
+    monitor.record_metrics("https://example.com/products", lcp=2800, inp=260, cls=0.12)
 
     report = monitor.get_metrics_report()
     print("Core Web Vitals Report:")
     for metric, data in report["metrics"].items():
         value = data["value"]
-        print(f"  {metric}: {value:.0f}{data['unit']} ({data['status']})")
+        # AVG() over a column nothing was recorded into returns NULL, and
+        # formatting None with :.0f raises. CLS is a small unitless ratio, so
+        # rounding it to whole numbers printed every score as 0.
+        if value is None:
+            shown = "no samples"
+        elif data["unit"]:
+            shown = f"{value:.0f}{data['unit']}"
+        else:
+            shown = f"{value:.3f}"
+        print(f"  {metric}: {shown} ({data['status']})")
     print()
 
     # 4. Performance budget
@@ -454,7 +453,7 @@ if __name__ == "__main__":
         "bundle_js": 180,
         "bundle_css": 45,
         "lcp": 2300,
-        "fid": 95
+        "inp": 180
     }
     violations = PerformanceBudget.check_budget(actual_metrics)
     if violations:

@@ -9,7 +9,7 @@ import sqlite3
 import json
 import hashlib
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional, Dict, Any
 import logging
@@ -20,6 +20,14 @@ logger = logging.getLogger("token_cache")
 
 class TokenCache:
     """SQLite-based cache for generated content and API responses."""
+
+    # SQLite's datetime('now') renders as "YYYY-MM-DD HH:MM:SS", and the
+    # comparison in get_cached_content is a string comparison. An ISO
+    # timestamp ("...T18:55:00.123456") sorts after it on the "T" alone, so
+    # every entry compared as unexpired no matter how old — the TTL silently
+    # did nothing, and a 24-hour job-listing cache would have served the same
+    # listings forever. Store the format SQLite itself uses.
+    SQLITE_TS = "%Y-%m-%d %H:%M:%S"
 
     def __init__(self, db_path: str = "token_cache.db"):
         """Open (creating if needed) the SQLite file backing the cache."""
@@ -59,8 +67,8 @@ class TokenCache:
                     batch_name TEXT UNIQUE,
                     topic TEXT,
                     count INTEGER,
-                    total_tokens INTEGER,
-                    total_cost REAL,
+                    total_tokens INTEGER DEFAULT 0,
+                    total_cost REAL DEFAULT 0,
                     status TEXT DEFAULT 'pending',
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
@@ -100,7 +108,7 @@ class TokenCache:
     ):
         """Store generated content in cache."""
         content_hash = self.get_content_hash(topic, params)
-        expires_at = datetime.utcnow() + timedelta(days=ttl_days)
+        expires_at = datetime.now(timezone.utc) + timedelta(days=ttl_days)
 
         with sqlite3.connect(self.db_path) as conn:
             conn.execute("""
@@ -112,7 +120,7 @@ class TokenCache:
                 topic,
                 content,
                 tokens_saved,
-                expires_at.isoformat(),
+                expires_at.strftime(self.SQLITE_TS),
                 json.dumps({"cached": True})
             ))
             conn.commit()
@@ -224,18 +232,20 @@ class TokenCache:
         """Update batch metrics."""
         with sqlite3.connect(self.db_path) as conn:
             if status:
+                # COALESCE because rows created before total_tokens gained a
+                # DEFAULT hold NULL, and NULL + 5000 is NULL.
                 conn.execute("""
                     UPDATE generation_batches
-                    SET total_tokens = total_tokens + ?,
-                        total_cost = total_cost + ?,
+                    SET total_tokens = COALESCE(total_tokens, 0) + ?,
+                        total_cost = COALESCE(total_cost, 0) + ?,
                         status = ?
                     WHERE batch_name = ?
                 """, (tokens, cost, status, batch_name))
             else:
                 conn.execute("""
                     UPDATE generation_batches
-                    SET total_tokens = total_tokens + ?,
-                        total_cost = total_cost + ?
+                    SET total_tokens = COALESCE(total_tokens, 0) + ?,
+                        total_cost = COALESCE(total_cost, 0) + ?
                     WHERE batch_name = ?
                 """, (tokens, cost, batch_name))
             conn.commit()
@@ -251,16 +261,17 @@ class TokenCache:
             return cursor.rowcount
 
 
-# Singleton instance
-_cache = None
+# One instance per database file. A single global ignored db_path after the
+# first call, so asking for "job_scraper_cache.db" once anything had already
+# opened the default returned a cache pointed at the wrong file.
+_caches: Dict[str, "TokenCache"] = {}
 
 
 def get_cache(db_path: str = "token_cache.db") -> TokenCache:
-    """Get or create cache instance."""
-    global _cache
-    if _cache is None:
-        _cache = TokenCache(db_path)
-    return _cache
+    """Get or create the cache instance for this database file."""
+    if db_path not in _caches:
+        _caches[db_path] = TokenCache(db_path)
+    return _caches[db_path]
 
 
 if __name__ == "__main__":

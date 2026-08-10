@@ -288,7 +288,7 @@ monitor = CoreWebVitalsMonitor()
 monitor.record_metrics(
     url="https://avoltium.in/",
     lcp=2100,
-    fid=75,
+    inp=150,
     cls=0.08,
     ttfb=300
 )
@@ -300,7 +300,7 @@ print(json.dumps(report, indent=2))
 
 **Targets:**
 - LCP: < 2.5s (target: 2.0s)
-- FID: < 100ms (target: 50ms)
+- INP: < 200ms (target: 150ms)
 - CLS: < 0.1 (target: 0.05)
 - TTFB: < 600ms (target: 150ms)
 
@@ -396,7 +396,7 @@ def check_backlink_profile():
 ### Avoltium.in
 - [ ] Token usage reduced by 40-50%
 - [ ] LCP < 2.2s (from 3.2s)
-- [ ] FID < 70ms (from 80ms)
+- [ ] INP < 180ms (from 200ms)
 - [ ] CLS < 0.08 (from 0.15)
 - [ ] Sitemap submitted to GSC
 - [ ] 5+ content pieces cached and reused
