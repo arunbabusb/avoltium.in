@@ -18,3 +18,5 @@ venv/
 # Test / build output
 .output/
 TestResults.xml
+shortlist.json
+shortlist.html
