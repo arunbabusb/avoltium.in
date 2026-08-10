@@ -162,6 +162,15 @@ class CoreWebVitalsMonitor:
                     recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
+            # CREATE TABLE IF NOT EXISTS is a no-op against a database created
+            # before this column was renamed from fid, so record_metrics would
+            # fail with "no column named inp" on any existing file. Add it, and
+            # leave a legacy fid column in place -- those readings were taken
+            # and dropping them would lose history for a metric that simply
+            # stopped being the one Google reports.
+            cols = {r[1] for r in conn.execute("PRAGMA table_info(web_vitals)")}
+            if "inp" not in cols:
+                conn.execute("ALTER TABLE web_vitals ADD COLUMN inp REAL")
             conn.commit()
 
     def record_metrics(

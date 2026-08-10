@@ -83,6 +83,42 @@ class TestTokenCache(unittest.TestCase):
         cached = self.cache.get_cached_content(topic, params)
         self.assertIsNone(cached)
 
+    def test_cache_expiry_honours_legacy_iso_timestamps(self):
+        """Rows written before the format fix must still expire.
+
+        Expiry used to be stored as an ISO timestamp and compared as a bare
+        string against SQLite's datetime('now'), which uses a space where ISO
+        puts a "T". "T" sorts after a space, so every such row read as
+        unexpired forever. Any cache file predating the fix still holds them.
+        """
+        import datetime as _dt
+        stale = (_dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(days=5)).isoformat()
+        digest = self.cache.get_content_hash("legacy", {})
+        with sqlite3.connect(self.temp_db.name) as conn:
+            conn.execute(
+                "INSERT INTO content_cache (hash, topic, content, tokens_saved, expires_at)"
+                " VALUES (?, ?, ?, ?, ?)",
+                (digest, "legacy", "five days stale", 0, stale))
+
+        self.assertIsNone(self.cache.get_cached_content("legacy", {}))
+        self.assertEqual(self.cache.clear_expired(), 1)
+
+    def test_cost_analysis_tolerates_null_metrics(self):
+        """tokens_used and cost_usd are nullable; SUM over all-NULL is NULL.
+
+        Summing that in Python raised TypeError and took down the whole
+        report, not just the one endpoint with missing numbers.
+        """
+        with sqlite3.connect(self.temp_db.name) as conn:
+            conn.execute(
+                "INSERT INTO api_calls (endpoint, tokens_used, cost_usd, cached)"
+                " VALUES ('legacy', NULL, NULL, 0)")
+
+        summary = self.cache.get_cost_analysis(days=30)['summary']
+        self.assertEqual(summary['total_api_calls'], 1)
+        self.assertEqual(summary['total_tokens'], 0)
+        self.assertEqual(summary['total_cost_usd'], 0.0)
+
     def test_api_call_logging(self):
         """Test API call metrics logging"""
         self.cache.log_api_call("gemini", tokens_used=1250, cost_usd=0.025)
@@ -238,6 +274,51 @@ class TestPerformanceOptimization(unittest.TestCase):
         """Skip the class when the performance module is not importable."""
         if not PERF_AVAILABLE:
             self.skipTest("shared_performance module not available")
+
+    def test_vitals_db_migrates_from_the_fid_schema(self):
+        """A database created before the INP rename must not break on insert.
+
+        CREATE TABLE IF NOT EXISTS is a no-op against an existing file, so
+        without an explicit migration record_metrics fails with "no column
+        named inp" on every deployment that had already recorded anything.
+        """
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".db") as fh:
+            db_path = fh.name
+        try:
+            with sqlite3.connect(db_path) as conn:
+                conn.execute("""
+                    CREATE TABLE web_vitals (
+                        id INTEGER PRIMARY KEY, url TEXT NOT NULL,
+                        lcp REAL, fid REAL, cls REAL, ttfb REAL, fcp REAL,
+                        recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)
+                """)
+                conn.execute("INSERT INTO web_vitals (url, lcp, fid, cls)"
+                             " VALUES ('/old', 2000, 80, 0.05)")
+
+            monitor = CoreWebVitalsMonitor(db_path)
+            monitor.record_metrics("/new", lcp=2100, inp=150, cls=0.08)
+            self.assertEqual(monitor.get_metrics_report()['metrics']['INP']['value'], 150)
+
+            # The old readings were real measurements; the migration keeps them.
+            with sqlite3.connect(db_path) as conn:
+                self.assertEqual(
+                    conn.execute("SELECT fid FROM web_vitals WHERE url='/old'").fetchone()[0], 80)
+        finally:
+            os.remove(db_path)
+
+    def test_vitals_report_marks_an_empty_metric_no_data(self):
+        """AVG() over a column nothing was written to is NULL, not a bad score."""
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".db") as fh:
+            db_path = fh.name
+        try:
+            monitor = CoreWebVitalsMonitor(db_path)
+            monitor.record_metrics("/", lcp=2100, inp=150, cls=0.08)
+            metrics = monitor.get_metrics_report()['metrics']
+            self.assertEqual(metrics['TTFB']['status'], 'no_data')
+            self.assertIsNone(metrics['TTFB']['value'])
+            self.assertEqual(metrics['LCP']['status'], 'good')
+        finally:
+            os.remove(db_path)
 
     def test_image_optimization_config(self):
         """Test image optimization specifications"""

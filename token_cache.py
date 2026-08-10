@@ -21,12 +21,13 @@ logger = logging.getLogger("token_cache")
 class TokenCache:
     """SQLite-based cache for generated content and API responses."""
 
-    # SQLite's datetime('now') renders as "YYYY-MM-DD HH:MM:SS", and the
-    # comparison in get_cached_content is a string comparison. An ISO
-    # timestamp ("...T18:55:00.123456") sorts after it on the "T" alone, so
-    # every entry compared as unexpired no matter how old — the TTL silently
-    # did nothing, and a 24-hour job-listing cache would have served the same
-    # listings forever. Store the format SQLite itself uses.
+    # Expiry was stored as an ISO timestamp and compared as a bare string
+    # against datetime('now'), which renders "YYYY-MM-DD HH:MM:SS". "T" sorts
+    # after a space, so every row compared as unexpired no matter how old --
+    # the TTL did nothing, and a 24-hour job-listing cache would have served
+    # the same listings forever. Two halves to the fix: write the format
+    # SQLite itself uses, and wrap both sides of the comparison in datetime()
+    # so rows already written in the old format expire too.
     SQLITE_TS = "%Y-%m-%d %H:%M:%S"
 
     def __init__(self, db_path: str = "token_cache.db"):
@@ -87,7 +88,8 @@ class TokenCache:
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.execute("""
                 SELECT content, tokens_saved FROM content_cache
-                WHERE hash = ? AND (expires_at IS NULL OR expires_at > datetime('now'))
+                WHERE hash = ?
+                  AND (expires_at IS NULL OR datetime(expires_at) > datetime('now'))
                 LIMIT 1
             """, (content_hash,))
 
@@ -146,10 +148,13 @@ class TokenCache:
         """Analyze token usage and costs over time period."""
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.execute("""
+                -- tokens_used and cost_usd are nullable, and SUM over a group
+                -- that is entirely NULL returns NULL, not 0. The Python sum()
+                -- below then raises TypeError on the whole report.
                 SELECT
                     COUNT(*) as total_calls,
-                    SUM(tokens_used) as total_tokens,
-                    SUM(cost_usd) as total_cost,
+                    COALESCE(SUM(tokens_used), 0) as total_tokens,
+                    COALESCE(SUM(cost_usd), 0.0) as total_cost,
                     SUM(CASE WHEN cached THEN 1 ELSE 0 END) as cached_calls,
                     endpoint
                 FROM api_calls
@@ -255,7 +260,8 @@ class TokenCache:
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.execute("""
                 DELETE FROM content_cache
-                WHERE expires_at IS NOT NULL AND expires_at < datetime('now')
+                WHERE expires_at IS NOT NULL
+                  AND datetime(expires_at) < datetime('now')
             """)
             conn.commit()
             return cursor.rowcount
