@@ -75,6 +75,11 @@ class Diagram:
     caption: str
     stages: List[Stage] = field(default_factory=list)
     footnote: str = ""
+    # Arrows assert that one box leads to the next. That is true of a
+    # feedwater train and false of a comparison: drawing AEL -> PEM -> SOEC
+    # claims a progression between three alternatives that a reader is
+    # supposed to choose between. Comparisons set this False.
+    sequential: bool = True
 
 
 def _wrap(draw, text, font, max_width) -> List[str]:
@@ -110,7 +115,14 @@ def render(diagram: Diagram) -> Image.Image:
     f_foot = _font(15)
 
     margin = 60
-    d.text((margin, 52), diagram.title, font=f_title, fill=INK)
+    # The title is one line by design. A long one used to run off the right
+    # edge and get cropped by the canvas — "…repeat the solar cost curve"
+    # lost its last two words — so step the size down until it fits.
+    size = 38
+    while size > 24 and d.textlength(diagram.title, font=f_title) > WIDTH - 2 * margin:
+        size -= 2
+        f_title = _font(size, bold=True)
+    d.text((margin, 52 + (38 - size) // 2), diagram.title, font=f_title, fill=INK)
 
     y = 108
     for line in _wrap(d, diagram.caption, f_cap, WIDTH - 2 * margin)[:2]:
@@ -131,6 +143,17 @@ def render(diagram: Diagram) -> Image.Image:
     # between the rule and the footnote. Stretching boxes to fill the frame
     # just moved the empty space inside them.
     LABEL_LH, DETAIL_LH, PAD_TOP, PAD_BOT, LABEL_GAP = 27, 21, 30, 26, 8
+
+    # A label word longer than its box cannot be wrapped, so it used to be
+    # drawn straight over the border — "Pre-commissioning" and
+    # "Instrumentation" both spilled out in five-box diagrams. Shrink the
+    # label font until the longest single word fits.
+    longest = max((w for st in diagram.stages for w in st.label.split()),
+                  key=lambda w: d.textlength(w, font=f_box), default="")
+    while (d.textlength(longest, font=f_box) > box_w - 28
+           and f_box.size > 15):
+        f_box = _font(f_box.size - 1, bold=True)
+
     wrapped = []
     for stage in diagram.stages:
         lab = _wrap(d, stage.label, f_box, box_w - 28)[:3]
@@ -169,7 +192,7 @@ def render(diagram: Diagram) -> Image.Image:
                 d.text((x0 + (box_w - tw) / 2, ty), line, font=f_detail, fill=MUTED)
                 ty += DETAIL_LH
 
-        if i < n - 1:
+        if diagram.sequential and i < n - 1:
             ax0 = x1 + 8
             ax1 = x1 + gap - 8
             ay = band_top + band_h / 2
@@ -272,6 +295,93 @@ DIAGRAMS: Dict[str, Diagram] = {
         ],
         footnote="Recovered heat is low grade. It is worth capturing only where an offtaker "
                  "sits close enough for the pipework to pay back.",
+    ),
+    # The six below cover articles whose subject is a comparison, a cost
+    # structure or a shift in emphasis. None of them has an honest photograph:
+    # a search for their subjects returns either abstractions or, in the worst
+    # case, something actively misleading — "green hydrogen plant" on Commons
+    # returns chlorophyll molecule renders. Every figure is taken from the
+    # article it illustrates.
+    "green hydrogen explained": Diagram(
+        title="Three commercial electrolyser architectures",
+        caption="How the mature routes differ where it matters for plant design.",
+        stages=[
+            Stage("Alkaline (AEL)", "KOH 20-30 wt%, nickel electrodes\n60-90 °C, up to 30 bar\n"
+                                    "0.2-0.6 A/cm², slow to ramp"),
+            Stage("PEM", "PFSA membrane, IrO₂ and Pt\n1.5-3.0 A/cm²\n"
+                         "Sub-second ramp, 5-120% turndown"),
+            Stage("Solid oxide (SOEC)", "Yttria-stabilised zirconia\n650-850 °C\n"
+                                        "Trades electricity for heat"),
+        ],
+        footnote="Splitting water needs 33.3 kWh/kg H₂ on the lower heating value. Real "
+                 "systems draw 48-65 kWh/kg once overpotentials, separation and rectification "
+                 "are counted.",
+        sequential=False,
+    ),
+    "lcoh": Diagram(
+        title="What sets the levelised cost of hydrogen",
+        caption="The five terms in the LCOH numerator, and the one that dominates.",
+        stages=[
+            Stage("Capital recovery", "CAPEX × capital recovery factor\nStack, power "
+                                      "electronics, BoP"),
+            Stage("Electricity", "Specific energy use × price\n65-85% of production cost"),
+            Stage("Fixed O&M", "Annual operations\nIndependent of output"),
+            Stage("Stack replacement", "Annualised set-aside\nDriven by degradation rate"),
+            Stage("Feedwater", "Treatment to stack purity\nSmall but not zero"),
+        ],
+        footnote="Output scales as rated power × capacity factor × 8760 ÷ specific energy "
+                 "consumption, so cheap intermittent power and high utilisation pull against "
+                 "each other.",
+    ),
+    "degradation mitigation": Diagram(
+        title="Where an electrolyser degrades, and what arrests it",
+        caption="Three failure paths and the materials answer to each.",
+        stages=[
+            Stage("Anode catalyst", "Iridium dissolution\nPyrochlore-structured catalysts"),
+            Stage("Porous transport layer", "Titanium oxidation\nALD-deposited coatings"),
+            Stage("Membrane", "Radical attack on PFSA\nImmobilised radical scavengers"),
+        ],
+        footnote="The target is beyond 80,000 hours at 2.0-3.0 A/cm² under dynamic load "
+                 "cycling, which no single one of these measures reaches alone.",
+        sequential=False,
+    ),
+    "certification": Diagram(
+        title="What a green hydrogen certificate has to prove",
+        caption="Certification is continuous telemetry, not a post-audit paperwork step.",
+        stages=[
+            Stage("Renewable intake", "Power source and timing\nGrid coupling accounted"),
+            Stage("Electrolyser", "Stack energy per kilogram\nDegradation tracked in service"),
+            Stage("Water treatment", "Polishing energy included\nInside the system boundary"),
+            Stage("Mass balance", "Metered production\nReconciled against inputs"),
+            Stage("Certificate", "Issued against the record\nAuditable end to end"),
+        ],
+        footnote="India's National Green Hydrogen Mission caps lifecycle carbon intensity at "
+                 "2.0 kg CO₂e per kg H₂, averaged over a rolling 12-month window.",
+    ),
+    "learning curve": Diagram(
+        title="Why electrolysers will not repeat the solar cost curve",
+        caption="Learning rates come from repeat-unit manufacturing, which a plant is not.",
+        stages=[
+            Stage("Solar PV", "~24% learning rate\nSolid-state modular product"),
+            Stage("Li-ion cells", "Above 20% learning rate\nAutomated repeat-unit lines"),
+            Stage("Electrolyser plant", "Electrochemical reactor plus\ndynamic chemical process"),
+        ],
+        footnote="The levers that remain are current-density intensification, power "
+                 "electronics integration, and standardising the water treatment interface — "
+                 "not assembly-line volume alone.",
+        sequential=False,
+    ),
+    "pilot projects to commercial": Diagram(
+        title="What changes between a megawatt pilot and a gigawatt plant",
+        caption="The binding constraint moves off the stack.",
+        stages=[
+            Stage("Megawatt pilot", "Cell chemistry and stack\nefficiency dominate attention"),
+            Stage("Water treatment", "High-recovery duty\nFeedstock at stack purity"),
+            Stage("Thermal rejection", "Heat grows with capacity\nAmbient-limited"),
+            Stage("Power conditioning", "Dynamic conversion\nRipple and ramp control"),
+        ],
+        footnote="Announced pipelines convert into operable assets on balance-of-plant "
+                 "engineering, which is where utility-scale schedules are won or lost.",
     ),
 }
 
