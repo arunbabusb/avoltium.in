@@ -5,6 +5,7 @@
 #     "python-dotenv"
 # ]
 # ///
+import datetime
 import io
 import os
 import requests
@@ -875,6 +876,27 @@ def main() -> None:
     #    stripped tags, and inline script text would count toward the
     #    thin-content threshold and mask a genuinely short article.
     html_content = inject_adsense_unit(html_content)
+
+    # 6b. Provenance block — byline, last-updated, AI disclosure and further
+    #     reading. Added here so a new article ships with it rather than
+    #     waiting for editorial_provenance.py to sweep the site afterwards.
+    #     Note what this is not: it carries *further reading*, not citations.
+    #     Nothing in the pipeline records which document a given sentence came
+    #     from, so nothing here may be presented as evidence for one. Adding
+    #     per-claim sources means writing the article from recorded sources in
+    #     the first place — see editorial_standards.md §8.
+    try:
+        import editorial_provenance
+        html_content += "\n" + editorial_provenance.build_block(
+            title=post_title,
+            reviewer=editorial_provenance.DEFAULT_REVIEWER,
+            role=editorial_provenance.DEFAULT_ROLE,
+            reviewed=datetime.date.today().strftime("%d %B %Y"),
+        )
+        print("Provenance block added.", flush=True)
+    except Exception as exc:
+        # A missing byline is not worth losing a finished article over.
+        print(f"WARNING: provenance block not added ({exc}).", flush=True)
 
     # 7. Publish to WordPress with topic-specific categories and SEO excerpt
     categories = (TOPICS.get(topic) or {}).get("categories", [12])

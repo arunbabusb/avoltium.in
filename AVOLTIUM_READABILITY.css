@@ -1,0 +1,157 @@
+/* ==========================================================================
+   avoltium.in — reading comfort and the provenance block
+   Paste at the END of Appearance → Customize → Additional CSS, then Publish.
+
+   Deploy note: WordPress does not expose Additional CSS over the REST API —
+   custom_css is not a registered field on /wp/v2/settings, and a POST there
+   is silently discarded with a 200 — so this one has to go in by hand.
+
+   Scope: typography and the provenance block only. Nothing here changes what
+   any article says.
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   1. Measure and rhythm
+   A line of technical prose is hardest to track when it runs the full width
+   of a desktop screen: the eye loses the line on the return sweep. 68
+   characters is the usual comfortable maximum. Line height goes up too —
+   these articles are dense with subscripts and units, which need the room.
+   -------------------------------------------------------------------------- */
+.td-post-content p,
+.tdb-block-inner p,
+.td_block_wrap p {
+    max-width: 68ch;
+    font-size: 1.075rem !important;
+    line-height: 1.75 !important;
+    margin-bottom: 1.35em !important;
+}
+
+/* Headings need clear air above them, more than below, so a section reads as
+   belonging to the heading that opens it rather than floating between two. */
+.td-post-content h2,
+.td-post-content h3 {
+    line-height: 1.3 !important;
+    margin-top: 2.1em !important;
+    margin-bottom: 0.6em !important;
+}
+.td-post-content h2 { font-size: 1.6rem !important; }
+.td-post-content h3 { font-size: 1.25rem !important; }
+
+.td-post-content li {
+    line-height: 1.7 !important;
+    margin-bottom: 0.5em !important;
+    max-width: 66ch;
+}
+
+/* Tables of figures are reference material — they are scanned, not read, so
+   they get tighter leading and a header that stays distinguishable. */
+.td-post-content table {
+    font-size: 0.95rem !important;
+    line-height: 1.5 !important;
+    border-collapse: collapse !important;
+    width: 100% !important;
+    display: block;
+    overflow-x: auto;          /* a wide figure table must not widen the page */
+}
+.td-post-content table th {
+    background: #f1f5f9 !important;
+    text-align: left !important;
+    font-weight: 700 !important;
+}
+.td-post-content table th,
+.td-post-content table td {
+    border: 1px solid #e2e8f0 !important;
+    padding: 8px 11px !important;
+}
+
+/* --------------------------------------------------------------------------
+   2. The opening summary
+   Every article opens with a bordered "Engineering Insight" panel written as
+   inline styles. Give it real presence so a reader who only reads one thing
+   reads the right one.
+   -------------------------------------------------------------------------- */
+.td-post-content > div[style*="border-left"] {
+    background: #f8fafc !important;
+    border-left: 4px solid #0a6694 !important;
+    border-radius: 0 8px 8px 0 !important;
+    padding: 18px 20px !important;
+    margin: 0 0 28px !important;
+    font-size: 1.05rem !important;
+    line-height: 1.7 !important;
+    max-width: 68ch;
+}
+
+/* --------------------------------------------------------------------------
+   3. Provenance block — byline, disclosure, further reading
+   -------------------------------------------------------------------------- */
+.av-provenance {
+    margin: 44px 0 8px;
+    padding: 22px 24px;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    background: #fbfcfd;
+    max-width: 68ch;
+}
+.av-provenance h2 {
+    font-size: 1.05rem !important;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #64748b !important;
+    margin: 0 0 14px !important;
+}
+.av-provenance h3 {
+    font-size: 0.95rem !important;
+    margin: 18px 0 4px !important;
+    color: #0f172a !important;
+}
+.av-byline { margin: 0 0 12px !important; font-size: 1rem !important; }
+.av-reviewed { color: #64748b; font-size: 0.9rem; }
+.av-disclosure {
+    margin: 0 !important;
+    font-size: 0.94rem !important;
+    line-height: 1.65 !important;
+    color: #475569 !important;
+}
+.av-fr-note {
+    margin: 0 0 6px !important;
+    font-size: 0.86rem !important;
+    color: #64748b !important;
+}
+.av-further-reading { margin: 0 !important; padding-left: 1.15em !important; }
+.av-further-reading li { font-size: 0.94rem !important; margin-bottom: 0.35em !important; }
+.av-further-reading a { color: #0a6694 !important; }
+
+/* Licence credit under a CC-licensed photograph. */
+.image-credit {
+    font-size: 0.84rem !important;
+    color: #64748b !important;
+    margin: 6px 0 22px !important;
+    line-height: 1.5 !important;
+}
+.image-credit a { color: #0a6694 !important; }
+
+/* --------------------------------------------------------------------------
+   4. Mobile
+   The measure cap is a desktop problem; on a phone the viewport already is
+   the measure, so it only gets in the way.
+   -------------------------------------------------------------------------- */
+@media (max-width: 767px) {
+    .td-post-content p,
+    .td-post-content li,
+    .av-provenance,
+    .td-post-content > div[style*="border-left"] { max-width: none; }
+
+    .td-post-content p {
+        font-size: 1.05rem !important;
+        line-height: 1.7 !important;
+    }
+    .td-post-content h2 { font-size: 1.35rem !important; margin-top: 1.7em !important; }
+    .td-post-content h3 { font-size: 1.12rem !important; }
+    .av-provenance { padding: 18px 16px; }
+}
+
+/* Respect a reader who has asked for less motion; nothing here animates, but
+   the theme's image transitions do. */
+@media (prefers-reduced-motion: reduce) {
+    .td-post-content * { transition: none !important; animation: none !important; }
+}

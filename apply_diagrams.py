@@ -68,11 +68,14 @@ def main() -> int:
         title = re.sub(r"<[^>]+>", "", p["title"]["rendered"])
         if not args.all and p["id"] not in wanted:
             continue
-        dg = diagrams.diagram_for(title)
-        if dg is None:
-            logger.warning("[%s] no diagram matches %r — skipping", p["id"], title[:56])
+        # A cross-section wins where both match: if an article is about what a
+        # cell is made of, the cutaway answers that and the process strip does
+        # not.
+        fig = diagrams.cross_section_for(title) or diagrams.diagram_for(title)
+        if fig is None:
+            logger.warning("[%s] no figure matches %r — skipping", p["id"], title[:56])
             continue
-        plan.append((p["id"], title, dg))
+        plan.append((p["id"], title, fig))
 
     missing = wanted - {pid for pid, _, _ in plan}
     for pid in sorted(missing):
@@ -81,13 +84,15 @@ def main() -> int:
     logger.info("%d post(s) to update", len(plan))
     changed = failed = 0
     for pid, title, dg in plan:
+        is_xs = isinstance(dg, diagrams.CrossSection)
         logger.info("[%s] %s", pid, title[:62])
-        logger.info("      -> %s", dg.title)
+        logger.info("      -> %s%s", dg.title, "  [cross-section]" if is_xs else "")
         if not args.execute:
             continue
 
         buf = io.BytesIO()
-        diagrams.render(dg).save(buf, "PNG", optimize=True)
+        draw = diagrams.render_cross_section if is_xs else diagrams.render
+        draw(dg).save(buf, "PNG", optimize=True)
         data, mime, filename = compress(buf.getvalue(), f"{slugify(dg.title)}.png")
 
         # The diagram is our own work, so there is no licence credit to carry;

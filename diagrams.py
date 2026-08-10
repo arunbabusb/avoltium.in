@@ -82,6 +82,33 @@ class Diagram:
     sequential: bool = True
 
 
+@dataclass
+class Layer:
+    """One band in a cross-section, drawn to scale-ish thickness."""
+    label: str
+    detail: str = ""
+    weight: int = 1          # relative thickness
+    tint: tuple = (255, 255, 255)
+
+
+@dataclass
+class CrossSection:
+    """A layered cutaway, for articles about what a cell is made of.
+
+    The stage renderer draws a left-to-right process. A membrane electrode
+    assembly is not a process — it is a sandwich, and the thing a reader needs
+    is which layer sits against which, and how thick each is relative to its
+    neighbours. Drawing that as five boxes with arrows between them would
+    assert a flow that does not exist.
+    """
+    title: str
+    caption: str
+    layers: List[Layer] = field(default_factory=list)
+    footnote: str = ""
+    left_note: str = ""
+    right_note: str = ""
+
+
 def _wrap(draw, text, font, max_width) -> List[str]:
     """Word-wrap, honouring explicit newlines as hard breaks.
 
@@ -207,6 +234,138 @@ def render(diagram: Diagram) -> Image.Image:
 
     d.rectangle([0, HEIGHT - 6, WIDTH, HEIGHT], fill=ACCENT_SOFT)
     return img
+
+
+def render_cross_section(cs: CrossSection) -> Image.Image:
+    """Draw a layered cutaway with the stack running left to right."""
+    img = Image.new("RGB", (WIDTH, HEIGHT), BG)
+    d = ImageDraw.Draw(img)
+
+    f_title = _font(38, bold=True)
+    f_cap = _font(20)
+    f_lab = _font(17, bold=True)
+    f_det = _font(14)
+    f_foot = _font(15)
+    f_side = _font(16, bold=True)
+
+    margin = 60
+    size = 38
+    while size > 24 and d.textlength(cs.title, font=f_title) > WIDTH - 2 * margin:
+        size -= 2
+        f_title = _font(size, bold=True)
+    d.text((margin, 52 + (38 - size) // 2), cs.title, font=f_title, fill=INK)
+
+    y = 108
+    for line in _wrap(d, cs.caption, f_cap, WIDTH - 2 * margin)[:2]:
+        d.text((margin, y), line, font=f_cap, fill=MUTED)
+        y += 26
+    d.line([(margin, y + 14), (WIDTH - margin, y + 14)], fill=RULE, width=2)
+
+    if not cs.layers:
+        return img
+
+    # Bands run left-to-right; labels alternate above and below so adjacent
+    # thin layers (a catalyst coat next to a membrane) do not collide. The
+    # band has to start far enough down that a two-line label with a two-line
+    # detail still clears the caption rule above it — at the first attempt the
+    # "Cathode catalyst" label was drawn straight through the caption.
+    rule_y = y + 14
+    LEADER, MAX_LABEL_H = 14, 76
+    top = rule_y + LEADER + MAX_LABEL_H + 16
+    band_h = 150
+    total_w = WIDTH - 2 * margin
+    weights = sum(max(1, l.weight) for l in cs.layers)
+    x = margin
+    for i, layer in enumerate(cs.layers):
+        w = total_w * max(1, layer.weight) / weights
+        d.rectangle([x, top, x + w, top + band_h], fill=layer.tint, outline=RULE, width=2)
+
+        above = i % 2 == 0
+        cx = x + w / 2
+        leader_y = top - 4 if above else top + band_h + 4
+        tip_y = top - LEADER if above else top + band_h + LEADER
+        d.line([(cx, leader_y), (cx, tip_y)], fill=RULE, width=2)
+
+        lab = _wrap(d, layer.label, f_lab, max(w + 44, 120))[:2]
+        det = _wrap(d, layer.detail, f_det, max(w + 44, 120))[:2] if layer.detail else []
+        block_h = len(lab) * 20 + len(det) * 17
+        ty = tip_y - block_h if above else tip_y
+        for line in lab:
+            tw = d.textlength(line, font=f_lab)
+            d.text((cx - tw / 2, ty), line, font=f_lab, fill=INK)
+            ty += 20
+        for line in det:
+            tw = d.textlength(line, font=f_det)
+            d.text((cx - tw / 2, ty), line, font=f_det, fill=MUTED)
+            ty += 17
+        x += w
+
+    # Electrode-side captions sit inside the outer faces, inset far enough not
+    # to be clipped by the frame — right-aligning flush to the margin put
+    # "H₂ out" half off the canvas.
+    mid = top + band_h / 2
+    INSET = 16
+    if cs.left_note:
+        d.text((margin + INSET, mid - 9), cs.left_note, font=f_side, fill=ACCENT)
+    if cs.right_note:
+        tw = d.textlength(cs.right_note, font=f_side)
+        d.text((WIDTH - margin - INSET - tw, mid - 9), cs.right_note, font=f_side, fill=ACCENT)
+
+    if cs.footnote:
+        fy = HEIGHT - 58
+        for line in _wrap(d, cs.footnote, f_foot, WIDTH - 2 * margin)[:2]:
+            d.text((margin, fy), line, font=f_foot, fill=MUTED)
+            fy += 20
+
+    d.rectangle([0, HEIGHT - 6, WIDTH, HEIGHT], fill=ACCENT_SOFT)
+    return img
+
+
+# Cross-sections keyed the same way as DIAGRAMS. Every layer and figure is
+# asserted by the articles these illustrate.
+CROSS_SECTIONS: Dict[str, CrossSection] = {
+    "pem electrolyzer": CrossSection(
+        title="Inside a PEM electrolysis cell",
+        caption="The membrane electrode assembly, anode on the left, cathode on the right.",
+        left_note="O₂ out",
+        right_note="H₂ out",
+        layers=[
+            Layer("Bipolar plate", "Titanium flow field", 3, (226, 232, 240)),
+            Layer("Porous transport layer", "Sintered titanium", 2, (203, 213, 225)),
+            Layer("Anode catalyst", "Iridium oxide", 1, (191, 219, 254)),
+            Layer("PFSA membrane", "Proton conduction\nGas separation", 2, (255, 247, 214)),
+            Layer("Cathode catalyst", "Platinum on carbon", 1, (187, 247, 208)),
+            Layer("Porous transport layer", "Carbon paper", 2, (203, 213, 225)),
+            Layer("Bipolar plate", "Flow field", 3, (226, 232, 240)),
+        ],
+        footnote="Band widths are relative, not to scale. The catalyst layers are the "
+                 "thinnest and the most expensive part of the cell, and the two the "
+                 "article's degradation section is about.",
+    ),
+    "bipolar plate": CrossSection(
+        title="Where a bipolar plate sits, and what it has to survive",
+        caption="The plate carries current and flow, and faces the harshest chemistry in the cell.",
+        left_note="Anode side",
+        right_note="Cathode side",
+        layers=[
+            Layer("Coating", "Passivation against\noxidation", 1, (254, 226, 226)),
+            Layer("Substrate", "Titanium or coated\nstainless", 4, (226, 232, 240)),
+            Layer("Flow field", "Machined or formed\nchannels", 3, (203, 213, 225)),
+            Layer("Contact face", "Against the porous\ntransport layer", 2, (191, 219, 254)),
+        ],
+        footnote="Contact resistance at the plate interface and coating integrity set both "
+                 "cell efficiency and how long the plate lasts under load cycling.",
+    ),
+}
+
+
+def cross_section_for(title: str) -> Optional[CrossSection]:
+    """Match an article title to a cross-section, longest key first."""
+    t = (title or "").lower()
+    for key in sorted(CROSS_SECTIONS, key=len, reverse=True):
+        if key in t:
+            return CROSS_SECTIONS[key]
+    return None
 
 
 # Diagrams keyed by a topic fragment matched case-insensitively against the
