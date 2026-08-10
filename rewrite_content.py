@@ -132,9 +132,14 @@ def extract_image_credit(html: str) -> str:
     return m.group(0) if m else ""
 
 
+# Same reason as qc_check.plain_text: the contents of these elements are not
+# body text, and here they would end up quoted into a prompt and an excerpt.
+_NON_VISIBLE = re.compile(r"<(script|style)\b[^>]*>.*?</\1\s*>", re.I | re.S)
+
+
 def plain_text(html: str) -> str:
     """HTML reduced to its visible text, whitespace collapsed."""
-    text = re.sub(r"<[^>]+>", " ", html)
+    text = re.sub(r"<[^>]+>", " ", _NON_VISIBLE.sub(" ", html or ""))
     return re.sub(r"\s+", " ", text).strip()
 
 
@@ -220,12 +225,26 @@ def make_excerpt(html: str) -> str:
     return text[:152] + "..." if len(text) > 155 else text
 
 
-def process(post_id: int, mode: str, backup: dict) -> bool:
-    """Rewrite one post, recording the original in `backup` first.
+def save_backup(backup: dict, path: str) -> None:
+    """Write the backup to disk atomically.
 
-    The backup happens before the write and is the only copy of the original
-    body, so a re-run that skipped it would destroy what it is meant to
-    protect.
+    Via a temp file and os.replace so an interrupt cannot leave a half-written
+    JSON where the originals used to be. This runs once per post rather than
+    once per run: the file is the only copy of the pre-rewrite bodies, and
+    writing it after the loop meant a crash between a successful POST and the
+    end of the run destroyed the original it was supposed to protect.
+    """
+    tmp = f"{path}.tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(backup, fh, indent=2, ensure_ascii=False)
+    os.replace(tmp, path)
+
+
+def process(post_id: int, mode: str, backup: dict, backup_path: str) -> bool:
+    """Rewrite one post, persisting the original before anything is written.
+
+    The backup is the only copy of the original body, so it goes to disk
+    before the update rather than being held in memory until the run ends.
     """
     res = resilient.request_with_retry(
         "GET",
@@ -245,6 +264,7 @@ def process(post_id: int, mode: str, backup: dict) -> bool:
     print(f"  [{mode}] {title[:65]}", flush=True)
 
     backup[str(post_id)] = {"title": title, "content": original}
+    save_backup(backup, backup_path)
 
     generated = call_gemini(build_prompt(title, original, mode))
     if not generated:
@@ -314,23 +334,21 @@ def main() -> None:
         print("Nothing to do.", flush=True)
         return
 
+    # Distinct filename per retry run so a retry never clobbers the backup
+    # holding the true pre-rewrite originals.
+    backup_name = f"content_backup_retry_{'_'.join(str(p) for p, _ in targets)}.json" \
+        if retry_raw else "content_backup.json"
+
     print(f"Processing {len(targets)} posts\n", flush=True)
     for pid, mode in targets:
         print(f"--- post {pid} ---", flush=True)
         try:
-            if process(pid, mode, backup):
+            if process(pid, mode, backup, backup_name):
                 done += 1
         except Exception as e:
             print(f"  ERROR: {e}", flush=True)
         # Stay well inside Gemini free-tier rate limits
         time.sleep(5)
-
-    # Distinct filename per retry run so a retry never clobbers the backup
-    # holding the true pre-rewrite originals.
-    backup_name = f"content_backup_retry_{'_'.join(str(p) for p, _ in targets)}.json" \
-        if retry_raw else "content_backup.json"
-    with open(backup_name, "w", encoding="utf-8") as fh:
-        json.dump(backup, fh, indent=2, ensure_ascii=False)
 
     print(f"\nRewrote {done}/{len(targets)} posts.", flush=True)
     print(f"Originals backed up for {len(backup)} posts in {backup_name}", flush=True)

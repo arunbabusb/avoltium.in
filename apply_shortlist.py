@@ -37,7 +37,9 @@ import sys
 
 import requests
 
-from backfill_images import compress, session, slugify, upload, POSTS_WRITE
+from backfill_images import (
+    FetchError, compress, download_image, session, slugify, upload, POSTS_WRITE,
+)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("apply-shortlist")
@@ -119,22 +121,16 @@ def main() -> int:
             logger.info("    [DRY-RUN] would upload and set as featured image")
             continue
 
-        try:
-            res = requests.get(cand["url"], timeout=120,
-                               headers={"User-Agent": USER_AGENT})
-        except Exception as exc:
-            logger.error("    fetch failed: %s", exc)
-            failed += 1
-            continue
         # Commons and Openverse answer 403/404 with an HTML or JSON body.
         # Unchecked, that body sails through compress() and gets attached to
-        # a live post as the featured image.
-        if res.status_code != 200 or len(res.content) < 10_000:
-            logger.error("    fetch rejected: HTTP %s, %d bytes",
-                         res.status_code, len(res.content))
+        # a live post as the featured image. download_image bounds the read
+        # and decodes the result before it can get that far.
+        try:
+            data = download_image(cand["url"], USER_AGENT, timeout=120)
+        except (FetchError, requests.RequestException) as exc:
+            logger.error("    fetch rejected: %s", exc)
             failed += 1
             continue
-        data = res.content
 
         is_png = cand["url"].lower().endswith(".png")
         mime = "image/png" if is_png else "image/jpeg"
@@ -149,7 +145,12 @@ def main() -> int:
                        f"licensed under {cand['licence']}.")
 
         before = len(data)
-        data, mime, filename = compress(data, filename)
+        try:
+            data, mime, filename = compress(data, filename)
+        except FetchError as exc:
+            logger.error("    rejected: %s", exc)
+            failed += 1
+            continue
         if len(data) != before:
             logger.info("    compressed %d KB -> %d KB", before // 1024, len(data) // 1024)
 

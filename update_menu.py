@@ -73,7 +73,9 @@ def session() -> requests.Session:
 def plain(t) -> str:
     """A rendered-or-raw REST title field as plain text."""
     if isinstance(t, dict):
-        t = t.get("rendered", "")
+        # context=edit returns raw with no rendered key; reading only rendered
+        # turned every title into an empty string.
+        t = t.get("rendered") or t.get("raw", "")
     return html.unescape(re.sub(r"<[^>]+>", "", t or "")).strip()
 
 
@@ -138,12 +140,21 @@ def main() -> int:
         # called on this theme.
         counts = {}
         for m in menus:
-            items = get_json(s, f"{READ}/menu-items", menus=m["id"], per_page=100) or []
+            items = get_json(s, f"{READ}/menu-items", menus=m["id"], per_page=100)
+            if items is None:
+                logger.error("Could not read items for menu %s", m["id"])
+                return 1
             counts[m["id"]] = len(items)
         menu_id = max(counts, key=counts.get)
         logger.info("auto-selected menu id=%s (%d items)", menu_id, counts[menu_id])
 
-    items = get_json(s, f"{READ}/menu-items", menus=menu_id, per_page=100) or []
+    items = get_json(s, f"{READ}/menu-items", menus=menu_id, per_page=100)
+    if items is None:
+        # An empty by_title makes every wanted entry look absent, and the run
+        # then adds a second copy of the entire menu.
+        logger.error("Could not read the items of menu %s; refusing to plan "
+                     "against an unknown menu", menu_id)
+        return 1
     by_title = {plain(i.get("title")).lower(): i for i in items}
     logger.info("menu has %d items", len(items))
 

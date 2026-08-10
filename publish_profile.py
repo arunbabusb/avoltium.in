@@ -243,13 +243,23 @@ def session() -> requests.Session:
     return s
 
 
+class LookupFailed(RuntimeError):
+    """The lookup itself failed, which is not the same as finding nothing."""
+
+
 def find_page(s: requests.Session, slug: str):
-    """The page with this slug, or None if there is not exactly one to find."""
+    """The existing page with this slug, or None if there is none.
+
+    Raises LookupFailed when the request errors. Returning None for both
+    outcomes meant a transient 500 read as "no such page", and the caller
+    published a second page on a slug that already had one.
+    """
     r = s.get(PAGES_READ, params={"slug": slug, "status": "publish,draft"}, timeout=30)
     if r.status_code != 200:
-        logger.error("Lookup of /%s failed: HTTP %s", slug, r.status_code)
-        return None
+        raise LookupFailed(f"/{slug}: HTTP {r.status_code}")
     items = r.json()
+    if not isinstance(items, list):
+        raise LookupFailed(f"/{slug}: expected a list, got {type(items).__name__}")
     return items[0] if items else None
 
 
@@ -295,7 +305,14 @@ def main() -> int:
                          args.delete_page, r.status_code, r.text[:200])
             return 1
 
-    existing = find_page(s, args.slug)
+    try:
+        existing = find_page(s, args.slug)
+    except LookupFailed as exc:
+        # Guessing "no page" here would publish a duplicate on a slug that
+        # already has one, and WordPress would silently serve it as
+        # /slug-2/ -- two pages competing for the same search result.
+        logger.error("Could not check whether /%s already exists: %s", args.slug, exc)
+        return 1
     payload = {"title": TITLE, "content": body, "status": "publish", "slug": args.slug}
     if existing:
         logger.info("Updating existing page id=%s", existing["id"])

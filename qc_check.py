@@ -73,8 +73,15 @@ MIN_IMAGE_WIDTH = 900       # featured images must survive retina/hero crops
 MAX_ASPECT_RATIO = 2.4      # ultrawide banners crop badly in card layouts
 
 
+# Stripping tags alone leaves the CSS and JS *inside* these elements behind as
+# body text. A generated article that carries an injected <style> block then
+# measures as longer than it is, and the thin-content blocker never fires.
+_NON_VISIBLE = re.compile(r"<(script|style)\b[^>]*>.*?</\1\s*>", re.I | re.S)
+
+
 def plain_text(html: str) -> str:
     """HTML reduced to its visible text, whitespace collapsed."""
+    html = _NON_VISIBLE.sub(" ", html or "")
     return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", html)).strip()
 
 

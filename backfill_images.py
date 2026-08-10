@@ -44,6 +44,52 @@ WP_APP_PASSWORD = os.environ.get("WP_APP_PASSWORD") or ""
 POSTS_READ = f"{WP_URL}/wp-json/wp/v2/posts"
 POSTS_WRITE = f"{WP_URL}/?rest_route=/wp/v2/posts"
 MEDIA_WRITE = f"{WP_URL}/?rest_route=/wp/v2/media"
+MEDIA_READ = f"{WP_URL}/wp-json/wp/v2/media"
+
+# Nothing legitimate on Commons or Openverse is anywhere near this, and the
+# whole body is held in memory before it is decoded.
+MAX_DOWNLOAD_BYTES = 40 * 1024 * 1024
+
+
+class FetchError(RuntimeError):
+    """A page of results could not be read, so the list on hand is incomplete."""
+
+
+def download_image(url: str, user_agent: str, timeout: int = 90) -> bytes:
+    """Fetch an image, bounded in size and verified to actually be an image.
+
+    Both guards matter because the URL comes from a third-party search result.
+    A 404 or a rate-limit page is served as HTML with a 200 often enough that
+    checking the status alone is not sufficient, and an unbounded read of a
+    remote body into memory is a denial of service waiting to be pointed at
+    the wrong link.
+
+    Raises FetchError on anything that is not a decodable image.
+    """
+    with requests.get(url, timeout=timeout, stream=True,
+                      headers={"User-Agent": user_agent}) as r:
+        if r.status_code != 200:
+            raise FetchError(f"HTTP {r.status_code}")
+        chunks, total = [], 0
+        for chunk in r.iter_content(64 * 1024):
+            total += len(chunk)
+            if total > MAX_DOWNLOAD_BYTES:
+                raise FetchError(f"larger than {MAX_DOWNLOAD_BYTES // (1024 * 1024)} MB")
+            chunks.append(chunk)
+    data = b"".join(chunks)
+    if len(data) < 10_000:
+        raise FetchError(f"only {len(data)} bytes")
+    verify_image(data)
+    return data
+
+
+def verify_image(data: bytes) -> None:
+    """Raise FetchError unless Pillow can decode `data` as an image."""
+    from PIL import Image as _Image
+    try:
+        _Image.open(io.BytesIO(data)).verify()
+    except Exception as exc:
+        raise FetchError(f"not a decodable image ({exc})") from exc
 
 
 def session() -> requests.Session:
@@ -65,14 +111,19 @@ def slugify(text: str, limit: int = 48) -> str:
 
 
 def fetch_posts(s: requests.Session, per_page: int = 100):
-    """Every published post with the fields this script needs, paginated."""
+    """Every published post with the fields this script needs, paginated.
+
+    Raises FetchError if any page fails. Returning what had been collected so
+    far let a failure on page two look like a short site: the run would report
+    success having quietly skipped every post after the hundredth.
+    """
     out, page = [], 1
     while True:
         r = s.get(POSTS_READ, params={"per_page": per_page, "page": page,
                                       "_fields": "id,title,link,featured_media"},
                   timeout=45)
         if r.status_code != 200:
-            break
+            raise FetchError(f"page {page} of posts: HTTP {r.status_code}")
         batch = r.json()
         if not batch:
             break
@@ -103,7 +154,11 @@ def compress(data: bytes, filename: str) -> tuple[bytes, str, str]:
     """
     from PIL import Image as _Image
     if filename.lower().endswith(".png"):
-        return data, "image/png", filename          # diagrams: already ~45 KB
+        # Diagrams are rendered here and are already ~45 KB, so there is
+        # nothing to gain by re-encoding — but a PNG that arrived from a
+        # search result still has to be a real PNG before it is uploaded.
+        verify_image(data)
+        return data, "image/png", filename
     try:
         im = _Image.open(io.BytesIO(data))
         im = im.convert("RGB")
@@ -126,7 +181,10 @@ def upload(s: requests.Session, data: bytes, filename: str, mime: str,
     """Upload bytes to the media library and return the new attachment id.
 
     Returns None when the upload is rejected, so the caller can skip the post
-    rather than assign a featured image that does not exist.
+    rather than assign a featured image that does not exist. The metadata
+    write counts as part of the upload: an attachment with no alt text is
+    inaccessible, and for a CC BY image the caption is the licence condition,
+    so an attachment missing either is not a usable result.
     """
     r = s.post(MEDIA_WRITE, data=data, timeout=120, headers={
         "Content-Type": mime,
@@ -138,8 +196,19 @@ def upload(s: requests.Session, data: bytes, filename: str, mime: str,
     media_id = r.json().get("id")
     # Alt text is set in a second call: the upload endpoint takes the binary as
     # the body, so there is nowhere to put metadata in the same request.
-    s.post(f"{MEDIA_WRITE}/{media_id}", json={"alt_text": alt, "caption": caption},
-           timeout=45)
+    meta = s.post(f"{MEDIA_WRITE}/{media_id}", json={"alt_text": alt, "caption": caption},
+                  timeout=45)
+    if meta.status_code != 200:
+        meta = s.post(f"{MEDIA_WRITE}/{media_id}", json={"alt_text": alt, "caption": caption},
+                      timeout=45)
+    if meta.status_code != 200:
+        # Leaving the attachment behind would put an uncredited image in the
+        # library for someone to find and use later, which is the failure this
+        # is guarding against in the first place.
+        logger.error("  metadata write failed: HTTP %s — deleting attachment %s",
+                     meta.status_code, media_id)
+        s.delete(f"{MEDIA_WRITE}/{media_id}", params={"force": "true"}, timeout=45)
+        return None
     return media_id
 
 
@@ -164,11 +233,20 @@ def main() -> int:
         return 2
 
     s = session()
-    posts = fetch_posts(s)
+    try:
+        posts = fetch_posts(s)
+    except FetchError as exc:
+        logger.error("Could not read the post list: %s", exc)
+        return 1
     logger.info("Fetched %d posts", len(posts))
 
     planned = []
     for p in posts:
+        # Backfill means backfill. Without this the script re-images posts
+        # that already have one, replacing images a human chose and leaving a
+        # duplicate attachment behind on every run.
+        if p.get("featured_media"):
+            continue
         title = plain_title(p)
         if args.only and args.only.lower() not in title.lower():
             continue
@@ -198,9 +276,8 @@ def main() -> int:
             caption = dg.caption
         else:
             try:
-                data = requests.get(hit.url, timeout=90,
-                                    headers={"User-Agent": image_sourcing.USER_AGENT}).content
-            except Exception as exc:
+                data = download_image(hit.url, image_sourcing.USER_AGENT)
+            except (FetchError, requests.RequestException) as exc:
                 logger.error("  fetch failed: %s", exc)
                 failed += 1
                 continue
@@ -212,7 +289,12 @@ def main() -> int:
             caption = re.sub(r"<[^>]+>", "", hit.attribution_html()) if hit.needs_credit else ""
 
         before = len(data)
-        data, mime, filename = compress(data, filename)
+        try:
+            data, mime, filename = compress(data, filename)
+        except FetchError as exc:
+            logger.error("  rejected: %s", exc)
+            failed += 1
+            continue
         if len(data) != before:
             logger.info("  compressed %d KB -> %d KB", before // 1024, len(data) // 1024)
 
@@ -236,7 +318,7 @@ def main() -> int:
                 "EXECUTE" if args.execute else "DRY-RUN", changed, failed, len(planned))
     if not args.execute:
         logger.info("Nothing written. Re-run with --execute.")
-    return 0
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":

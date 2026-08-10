@@ -16,6 +16,7 @@ rather than published.
 Run by .github/workflows/publish_article.yml; also runnable by hand.
 """
 import datetime
+import hashlib
 import io
 import os
 import requests
@@ -798,8 +799,20 @@ def main() -> None:
 
     # 1. Check cache first before generating
     cache = get_cache()
-    cache_params = {"style": "technical", "length": "1200"}
+    # The prompt is part of what produced the cached body, so it has to be
+    # part of the key. Without it, editing build_gemini_prompt changes nothing
+    # for 90 days on every topic already in the cache -- the old article comes
+    # back and the new rules are never applied. Hashing the prompt text means
+    # the key moves whenever the prompt does, with nothing to remember to bump.
+    cache_params = {
+        "style": "technical",
+        "length": "1200",
+        "prompt": hashlib.sha256(build_gemini_prompt("").encode()).hexdigest()[:16],
+    }
     cached_content = cache.get_cached_content(topic, cache_params)
+    # One bounded DELETE per run. Nothing else ever calls this, so without it
+    # every superseded article body stays in the file forever.
+    cache.clear_expired()
 
     html_content = None
     model_used = "cached"
