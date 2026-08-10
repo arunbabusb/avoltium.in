@@ -122,6 +122,9 @@ add_action('template_redirect', function () {
 
     // Google News reads the last two days only, and caps a news sitemap at
     // 1000 URLs. Sending more is not rewarded and older entries are ignored.
+    // Same category set the schema uses for NewsArticle. Listing a technical
+    // explainer inside <news:news> while its markup says Article is a
+    // contradiction Google reads as a malformed news sitemap.
     $posts = get_posts([
         'post_type'   => 'post',
         'post_status' => 'publish',
@@ -129,6 +132,11 @@ add_action('template_redirect', function () {
         'date_query'  => [['after' => '48 hours ago']],
         'orderby'     => 'date',
         'order'       => 'DESC',
+        'tax_query'   => [[
+            'taxonomy' => 'category',
+            'field'    => 'slug',
+            'terms'    => ['industry-news', 'news', 'hydrogen-policy-market'],
+        ]],
     ]);
 
     header('Content-Type: application/xml; charset=UTF-8');

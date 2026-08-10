@@ -167,10 +167,10 @@ def main() -> int:
     changed = 0
     for p in posts:
         title = html.unescape(re.sub(r"<[^>]+>", "", p["title"]["rendered"]))
-        # The article's own last-modified date, not today's — claiming a review
-        # happened today on a post nobody opened today would be untrue.
-        reviewed = dt.datetime.fromisoformat(
-            p["modified"]).strftime("%d %B %Y")
+        # This write itself updates WordPress's `modified` timestamp, so
+        # reading the pre-update value printed a date that stopped being true
+        # the moment the post saved. Use the date of the edit.
+        reviewed = dt.date.today().strftime("%d %B %Y")
         block = build_block(title, args.reviewer, args.role, reviewed)
         body = p["content"]["rendered"]
         new = BLOCK.sub(block, body) if BLOCK.search(body) else body.rstrip() + "\n" + block

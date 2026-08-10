@@ -71,7 +71,8 @@ def main() -> int:
     args = ap.parse_args()
 
     s = session()
-    posts = fetch_all(s, POSTS_READ, _fields="id,title,content,featured_media")
+    posts = fetch_all(s, POSTS_READ, _fields="id,title,content,featured_media",
+                      context="edit")
     with_media = [p for p in posts if p.get("featured_media")]
     media = fetch_all(s, POSTS_READ.replace("/posts", "/media"),
                       include=",".join(str(p["featured_media"]) for p in with_media),
@@ -82,7 +83,11 @@ def main() -> int:
     changed = skipped = 0
     for p in with_media:
         cap = caps.get(p["featured_media"], "")
-        body = p["content"]["rendered"]
+        # content.raw, not rendered: writing filtered output back would
+        # flatten Gutenberg block comments and shortcodes into plain HTML.
+        # These posts happen to be classic HTML today, but one block post
+        # would be destroyed silently.
+        body = p["content"].get("raw") or p["content"]["rendered"]
         if not cap or not NEEDS_CREDIT.search(cap):
             # No obligation. If we previously added one, take it back out.
             if BLOCK.search(body):

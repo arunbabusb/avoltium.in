@@ -113,12 +113,21 @@ def main() -> int:
             continue
 
         try:
-            data = requests.get(cand["url"], timeout=120,
-                                headers={"User-Agent": USER_AGENT}).content
+            res = requests.get(cand["url"], timeout=120,
+                               headers={"User-Agent": USER_AGENT})
         except Exception as exc:
             logger.error("    fetch failed: %s", exc)
             failed += 1
             continue
+        # Commons and Openverse answer 403/404 with an HTML or JSON body.
+        # Unchecked, that body sails through compress() and gets attached to
+        # a live post as the featured image.
+        if res.status_code != 200 or len(res.content) < 10_000:
+            logger.error("    fetch rejected: HTTP %s, %d bytes",
+                         res.status_code, len(res.content))
+            failed += 1
+            continue
+        data = res.content
 
         is_png = cand["url"].lower().endswith(".png")
         mime = "image/png" if is_png else "image/jpeg"

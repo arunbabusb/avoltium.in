@@ -114,7 +114,17 @@ def main() -> int:
     logger.info("rendered %d chars of HTML from editorial_standards.md", len(body))
 
     s = session()
-    found = s.get(PAGES, params={"slug": SLUG, "status": "publish,draft"}, timeout=60).json()
+    res = s.get(PAGES, params={"slug": SLUG, "status": "publish,draft"}, timeout=60)
+    if res.status_code != 200:
+        logger.error("lookup failed: HTTP %s — %s", res.status_code, res.text[:200])
+        return 1
+    found = res.json()
+    if not isinstance(found, list):
+        # An error object here is truthy, so found[0]['id'] would raise — and a
+        # permission problem returning [] would silently create a second page
+        # on the same slug, with articles linking to whichever WordPress served.
+        logger.error("lookup returned %s, expected a list", type(found).__name__)
+        return 1
     payload = {"title": TITLE, "slug": SLUG, "content": body, "status": "publish"}
 
     if not args.execute:

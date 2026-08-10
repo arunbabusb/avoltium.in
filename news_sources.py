@@ -19,7 +19,12 @@ from __future__ import annotations
 
 import re
 import urllib.request
-import xml.etree.ElementTree as ET
+try:
+    # Remote XML from feeds we do not control; defusedxml blocks the entity
+    # expansion attacks the stdlib parser is still open to.
+    from defusedxml import ElementTree as ET
+except ImportError:  # pragma: no cover - falls back where it is not installed
+    import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from datetime import datetime, timezone, timedelta
 from email.utils import parsedate_to_datetime
@@ -79,12 +84,26 @@ def _text(el, *names) -> str:
     return ""
 
 
-def _parse_date(raw: str) -> datetime:
+def _parse_date(raw: str) -> datetime | None:
+    """Parsed timestamp, or None when the feed did not give a usable one.
+
+    Falling back to "now" for an unparseable date was the wrong default: it
+    makes an item of unknown age look like the freshest thing in the feed, and
+    collect() would then hand a months-old story to the publisher as news.
+    ISO-8601 is tried first because the dc:date fallback field uses it.
+    """
+    if not raw:
+        return None
+    try:
+        d = datetime.fromisoformat(raw.strip().replace("Z", "+00:00"))
+        return d if d.tzinfo else d.replace(tzinfo=timezone.utc)
+    except ValueError:
+        pass
     try:
         d = parsedate_to_datetime(raw)
         return d if d.tzinfo else d.replace(tzinfo=timezone.utc)
-    except Exception:
-        return datetime.now(timezone.utc)
+    except (TypeError, ValueError, IndexError):
+        return None
 
 
 def fetch_feed(name: str, url: str, region: str) -> List[NewsItem]:
@@ -107,9 +126,14 @@ def fetch_feed(name: str, url: str, region: str) -> List[NewsItem]:
         m = re.match(r"^(.*)\s+-\s+([^-]{2,40})$", title)
         if "news.google.com" in url and m:
             title, publisher = m.group(1).strip(), m.group(2).strip()
+        published = _parse_date(_text(it, "pubDate",
+                                      "{http://purl.org/dc/elements/1.1/}date"))
+        if published is None:
+            # Unknown age is not the same as fresh; drop it rather than guess.
+            continue
         out.append(NewsItem(
             title=title, link=link, publisher=publisher,
-            published=_parse_date(_text(it, "pubDate", "{http://purl.org/dc/elements/1.1/}date")),
+            published=published,
             summary=_text(it, "description")[:600],
             region=region,
         ))

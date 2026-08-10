@@ -177,9 +177,12 @@ def render(diagram: Diagram) -> Image.Image:
     # label font until the longest single word fits.
     longest = max((w for st in diagram.stages for w in st.label.split()),
                   key=lambda w: d.textlength(w, font=f_box), default="")
-    while (d.textlength(longest, font=f_box) > box_w - 28
-           and f_box.size > 15):
-        f_box = _font(f_box.size - 1, bold=True)
+    # Track the size separately: the bitmap fallback from _font() does not
+    # promise a .size attribute, and reading it would raise mid-render.
+    box_size = 21
+    while d.textlength(longest, font=f_box) > box_w - 28 and box_size > 15:
+        box_size -= 1
+        f_box = _font(box_size, bold=True)
 
     wrapped = []
     for stage in diagram.stages:
@@ -274,7 +277,7 @@ def render_cross_section(cs: CrossSection) -> Image.Image:
     top = rule_y + LEADER + MAX_LABEL_H + 16
     band_h = 150
     total_w = WIDTH - 2 * margin
-    weights = sum(max(1, l.weight) for l in cs.layers)
+    weights = sum(max(1, layer.weight) for layer in cs.layers)
     x = margin
     for i, layer in enumerate(cs.layers):
         w = total_w * max(1, layer.weight) / weights
