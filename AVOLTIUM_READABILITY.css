@@ -231,3 +231,30 @@ html body .td-post-content li {
     html body .td-post-content > p { font-size: 17.5px !important; }
     html body .td-post-content li { font-size: 17px !important; }
 }
+
+/* --------------------------------------------------------------------------
+   6. Remove the leftover theme demo ad spot
+   The Newspaper demo content ships a "The news you need — now available from
+   your pocket" banner with App Store and Google Play badges, rendered as a
+   tagDiv ad spot (.td-a-rec) pointing at custom-rec.jpg / custom-rec-2.jpg
+   with href="#" and alt="spot_img". It advertises an app that does not exist
+   and links nowhere, on category pages and single posts.
+
+   Matched on the image rather than the block id: tagDiv regenerates .tdi_NN
+   whenever a template is re-saved, so .tdi_61 would silently stop matching.
+   :has() collapses the whole spot so no gap is left; the rule after it is the
+   fallback for engines without :has(), which hides the banner even though the
+   empty container remains.
+
+   This is a display fix. The permanent removal is to delete the ad spot in
+   Newspaper → Theme Panel → Ad Spots, which also stops the image downloading.
+   -------------------------------------------------------------------------- */
+.td-a-rec:has(img[src*="custom-rec"]),
+.td-a-rec:has(img[alt="spot_img"]) {
+    display: none !important;
+}
+
+.td-a-rec img[src*="custom-rec"],
+.td-a-rec img[alt="spot_img"] {
+    display: none !important;
+}
