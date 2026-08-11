@@ -31,23 +31,44 @@ from datetime import datetime, timezone, timedelta
 from email.utils import parsedate_to_datetime
 from typing import List
 
-USER_AGENT = ("Mozilla/5.0 (compatible; avoltium-newsbot/1.0; "
-              "+https://www.avoltium.in)")
+# Identify honestly, with somewhere to complain to. The previous value called
+# itself "avoltium-newsbot" and publishers behind bot filters answered 403 —
+# the literal token "bot" is enough to trip them. Verified against
+# hydrogenfuelnews.com: 403 as newsbot, 200 and 26 KB of valid XML as this.
+#
+# Deliberately not a browser string. These are public RSS feeds and reading
+# them is what they are published for, so the fetcher says who it is and how
+# to reach us rather than pretending to be Chrome.
+USER_AGENT = "avoltium-news/1.0 (+https://www.avoltium.in; hello@avoltium.in)"
 
+# Indian coverage. The general energy feeds carry hydrogen only occasionally —
+# measured over one day they produced 50 fresh items and no hydrogen story at
+# all — but they are the only Indian source besides Google News, and Indian
+# policy stories do surface there, so they stay.
 INDIA_FEEDS = [
     ("ET EnergyWorld — Renewable", "https://energy.economictimes.indiatimes.com/rss/renewable"),
-    ("ET EnergyWorld — Power", "https://energy.economictimes.indiatimes.com/rss/power"),
     ("ET EnergyWorld — Oil & Gas", "https://energy.economictimes.indiatimes.com/rss/oil-and-gas"),
     ("Mercom India", "https://www.mercomindia.com/feed"),
     ("Google News — green hydrogen India",
      "https://news.google.com/rss/search?q=green+hydrogen+India&hl=en-IN&gl=IN&ceid=IN:en"),
 ]
 
+# Global coverage, and the reason this list changed. It used to be PV
+# Magazine, Energy Storage News and Offshore Energy: solar, battery and
+# offshore-wind trade press, which between them produced 32 fresh items and
+# zero hydrogen stories in a day, because they do not cover hydrogen. Every
+# story the site published was therefore coming from the Google News search
+# feed, whose links are JavaScript redirect stubs — eleven characters, nothing
+# to read — and whose summaries run to about ninety.
+#
+# These four are hydrogen trade press. They carry the beat, they give real
+# article links rather than redirects, and Hydrogen Central's summaries are
+# three to four times longer than Google News's.
 GLOBAL_FEEDS = [
+    ("Fuel Cells Works", "https://fuelcellsworks.com/feed"),
     ("Hydrogen Central", "https://hydrogen-central.com/feed/"),
-    ("PV Magazine", "https://www.pv-magazine.com/feed/"),
-    ("Energy Storage News", "https://www.energy-storage.news/feed/"),
-    ("Offshore Energy", "https://www.offshore-energy.biz/feed/"),
+    ("Hydrogen Tech World", "https://hydrogentechworld.com/feed"),
+    ("Hydrogen Fuel News", "https://www.hydrogenfuelnews.com/feed/"),
     ("Google News — green hydrogen",
      "https://news.google.com/rss/search?q=green+hydrogen&hl=en-US&gl=US&ceid=US:en"),
 ]
@@ -90,13 +111,34 @@ def is_relevant(title: str, summary: str = "") -> bool:
 # ran it. Mercom India carried "European Energy Secures $78 Million for UK
 # Solar and Battery Projects", and taking the region from the feed filed a UK
 # story under India.
+# Words that mean India whatever their case. Kept to terms with no ordinary
+# English sense: place names, institutions, currency.
 INDIA_SIGNAL = re.compile(
-    r"\b(india|indian|bharat|modi|centre|niti\s*aayog|sebi|ongc|bpcl|iocl|ntpc|"
-    r"sail|gail|adani|reliance|jsw|greenko|acme|avaada|ohmium|"
-    r"andhra|assam|bihar|delhi|gujarat|haryana|karnataka|kerala|madhya|"
+    r"\b(india|indian|bharat|modi|niti\s*aayog|"
+    r"andhra|assam|bihar|gujarat|haryana|karnataka|kerala|madhya\s+pradesh|"
     r"maharashtra|odisha|punjab|rajasthan|tamil\s*nadu|telangana|"
-    r"uttar|bengal|ladakh|kandla|paradip|kochi|tuticorin|"
+    r"uttar\s+pradesh|west\s+bengal|ladakh|kandla|paradip|kochi|tuticorin|"
     r"crore|lakh|rupee|\u20b9)\b", re.I)
+
+# Company and agency abbreviations, matched case-sensitively because several
+# are also ordinary words. Case-insensitively, "sail" filed "Ships sail to
+# Rotterdam with first ammonia cargo" under India, and "acme" did the same for
+# "Acme Corporation of Ohio".
+INDIA_ACRONYM = re.compile(
+    r"\b(ONGC|BPCL|IOCL|NTPC|SAIL|GAIL|JSW|SEBI|NHPC|BHEL|IOC|"
+    r"Adani|Reliance|Greenko|Avaada|Ohmium|ACME)\b")
+
+# "Centre" means the union government in Indian headlines and a building
+# everywhere else. "German MPs Visit THWS Hydrogen Centre" was filed as an
+# Indian story on the strength of that one word, so it now has to be doing
+# something a government does.
+INDIA_CENTRE = re.compile(
+    r"\bcentre\s+(awards?|approves?|notifies|clears?|sanctions?|announces?|"
+    r"allocates?|plans?|launches?|invites?|extends?|mandates?)\b", re.I)
+
+# Delhi is a city and a metonym for the government, but it is also a common
+# dateline on wire copy about anywhere. It counts only alongside something else
+# Indian, which the two patterns above already supply.
 
 
 def region_of(text: str) -> str:
@@ -106,7 +148,8 @@ def region_of(text: str) -> str:
     its unsignalled items is what filed "European Energy Secures $78 Million
     for UK Solar and Battery Projects" under India in the first place.
     """
-    return "india" if INDIA_SIGNAL.search(text) else "global"
+    return "india" if (INDIA_SIGNAL.search(text) or INDIA_ACRONYM.search(text)
+                       or INDIA_CENTRE.search(text)) else "global"
 
 # Wire copy that is not a story about the sector.
 # Investment commentary keeps arriving on the hydrogen feeds — a dry run
@@ -157,6 +200,13 @@ TOPIC_BANDS = [
 ]
 
 
+# A summary at least this long gives the model something to write from.
+# Measured across a day's candidates: Google News summaries have a median of
+# 91 characters and every article written from one that short was rejected as
+# too thin; Hydrogen Central's run 291-365.
+WRITABLE_SUMMARY = 200
+
+
 @dataclass
 class NewsItem:
     """One item from a publisher's feed, normalised across feed formats."""
@@ -187,13 +237,23 @@ class NewsItem:
         return 0
 
     def rank(self) -> float:
-        """Sort key: what the story is about, with recency as the tiebreak.
+        """Sort key: the beat first, then whether it can be written, then age.
 
-        Age is divided by 24 so that inside the 36-hour window it can only
-        reorder items of the same band. A fresher compressor story beats a
-        staler one; no amount of freshness lifts a stake sale above a tender.
+        The two adjustments are deliberately bounded so their combined swing
+        (0.9) stays under the smallest gap between bands (1.0). That makes the
+        band strictly dominant: no amount of freshness or detail lifts a stake
+        sale above a tender. The previous version divided age by 24, which at
+        36 hours was a penalty of 1.5 and could cross a band.
+
+        The detail term exists because selection was picking Google News items
+        over hydrogen trade press. Both scored band 5, the Google items were
+        fresher, and their summaries are about ninety characters against three
+        hundred — so the pipeline consistently chose the stories it had the
+        least to write from, and the model then refused them as too thin.
         """
-        return self.topic_score() - self.age_hours() / 24
+        freshness = -min(self.age_hours(), 72) / 144          # 0 to -0.5
+        detail = 0.4 if len(self.summary) >= WRITABLE_SUMMARY else 0.0
+        return self.topic_score() + freshness + detail
 
 
 def _text(el, *names) -> str:

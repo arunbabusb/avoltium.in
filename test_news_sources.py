@@ -142,6 +142,43 @@ class TestRegion(unittest.TestCase):
             with self.subTest(text=text):
                 self.assertEqual(region_of(text), "global")
 
+    def test_ordinary_words_are_not_india_signals(self):
+        """These are English words that happen to spell Indian companies.
+
+        Matched case-insensitively, "sail" filed a Rotterdam shipping story
+        under India and "acme" did the same for a company in Ohio.
+        """
+        for text in (
+            "Ships sail to Rotterdam with first ammonia cargo",
+            "Acme Corporation of Ohio buys electrolyser",
+        ):
+            with self.subTest(text=text):
+                self.assertEqual(region_of(text), "global")
+
+    def test_acronyms_still_count_when_capitalised(self):
+        """The companies themselves must not be lost to the fix."""
+        for text in (
+            "SAIL commissions green hydrogen pilot at Rourkela",
+            "NTPC commissions electrolyser at Pudimadaka",
+            "ACME starts up green ammonia plant",
+        ):
+            with self.subTest(text=text):
+                self.assertEqual(region_of(text), "india")
+
+    def test_centre_needs_to_be_governing(self):
+        """"Centre" is the union government in Delhi and a building elsewhere.
+
+        "German MPs Visit THWS Hydrogen Centre" was filed as an Indian story
+        and selected for the India slot on the strength of that one word.
+        """
+        self.assertEqual(
+            region_of("Centre awards 30 KTPA green hydrogen capacity"), "india")
+        self.assertEqual(
+            region_of("German MPs Visit THWS Hydrogen Centre as Taifun 17 H2 Flies"),
+            "global")
+        self.assertEqual(
+            region_of("Centre for Hydrogen Research opens in Perth"), "global")
+
 
 class TestDuplicates(unittest.TestCase):
     """Two wires filing one announcement do not write the same headline."""
@@ -330,3 +367,33 @@ class TestSeenStories(unittest.TestCase):
     def test_empty_memory_covers_nothing(self):
         """A fresh site must not reject its first article."""
         self.assertFalse(SeenStories().covers("Marginal costs for hydrogen are falling"))
+
+
+class TestRankBounds(unittest.TestCase):
+    """The beat must dominate. Freshness and detail only reorder within it."""
+
+    def test_band_beats_everything_else_combined(self):
+        """A stale, thin band-5 story still outranks a fresh, rich band-4 one.
+
+        Both adjustments together swing at most 0.9, under the 1.0 band gap.
+        The old age term was age/24, which reached 1.5 at 36 hours and could
+        cross a band on freshness alone.
+        """
+        worst_five = item("Hydrogen plant commissioned", hours_old=72)
+        best_four = item("Compressor and cooling upgrade at the stack",
+                         hours_old=0, summary="x" * 400)
+        self.assertEqual(worst_five.topic_score(), 5)
+        self.assertEqual(best_four.topic_score(), 4)
+        self.assertGreater(worst_five.rank(), best_four.rank())
+
+    def test_detail_wins_within_a_band(self):
+        """Same beat, so prefer the story there is something to write from."""
+        thin = item("Green hydrogen plant announced", hours_old=1, summary="x" * 90)
+        rich = item("Green ammonia plant announced", hours_old=6, summary="x" * 320)
+        self.assertGreater(rich.rank(), thin.rank())
+
+    def test_freshness_still_breaks_a_tie(self):
+        """With detail equal, the newer story wins."""
+        fresh = item("Electrolyser order placed", hours_old=1, summary="x" * 320)
+        stale = item("Electrolyser contract signed", hours_old=40, summary="x" * 320)
+        self.assertGreater(fresh.rank(), stale.rank())
