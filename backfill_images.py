@@ -202,11 +202,15 @@ def compress(data: bytes, filename: str) -> tuple[bytes, str, str]:
     PNG is already small.
     """
     from PIL import Image as _Image
+    # Both branches, not just the PNG one. convert("RGB") below allocates on
+    # the decoded dimensions, so the pixel ceiling has to clear before it —
+    # and verifying only the branch that does no decoding was backwards.
+    # Callers reaching here through download_image have already been checked;
+    # a header parse is cheap enough not to care.
+    verify_image(data)
     if filename.lower().endswith(".png"):
         # Diagrams are rendered here and are already ~45 KB, so there is
-        # nothing to gain by re-encoding — but a PNG that arrived from a
-        # search result still has to be a real PNG before it is uploaded.
-        verify_image(data)
+        # nothing to gain by re-encoding.
         return data, "image/png", filename
     try:
         im = _Image.open(io.BytesIO(data))
