@@ -295,7 +295,8 @@ def process(post_id: int, mode: str, backup: dict, backup_path: str) -> bool:
     )
     body = re.sub(
         r"(?i)\b(water treatment|ultrapure water)\b",
-        f'<a href="{WP_URL}/water-consumption-calculator/" style="color:#0056b3; font-weight:bold;">\\1</a>',
+        # Must match the published slug, which carries "treatment" in it.
+        f'<a href="{WP_URL}/water-consumption-treatment-calculator/" style="color:#0056b3; font-weight:bold;">\\1</a>',
         body, count=1,
     )
 
