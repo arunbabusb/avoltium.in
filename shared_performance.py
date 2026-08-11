@@ -150,6 +150,11 @@ class CoreWebVitalsMonitor:
         """Initialize metrics database."""
         import sqlite3
         with sqlite3.connect(self.db_path) as conn:
+            # BEGIN IMMEDIATE takes the write lock before the PRAGMA below, so
+            # two processes opening the same legacy file cannot both see `inp`
+            # missing and both try to ALTER it — the second would fail with a
+            # duplicate-column error on a path that only runs at startup.
+            conn.execute("BEGIN IMMEDIATE")
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS web_vitals (
                     id INTEGER PRIMARY KEY,

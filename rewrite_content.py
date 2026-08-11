@@ -351,7 +351,13 @@ def main() -> None:
     if os.path.exists(backup_name):
         try:
             with open(backup_name, encoding="utf-8") as fh:
-                backup.update(json.load(fh))
+                loaded = json.load(fh)
+            # json.load happily returns null or a list. backup.update(None)
+            # raises TypeError past this handler, and a list would be accepted
+            # and then overwritten by the first save.
+            if not isinstance(loaded, dict):
+                raise ValueError(f"expected a JSON object, got {type(loaded).__name__}")
+            backup.update(loaded)
             print(f"Loaded {len(backup)} existing original(s) from {backup_name}", flush=True)
         except (OSError, ValueError) as exc:
             print(f"ERROR: {backup_name} exists but could not be read ({exc}). "

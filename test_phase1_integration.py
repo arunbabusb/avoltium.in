@@ -3,6 +3,7 @@ Phase 1 Integration Tests - Avoltium.in
 Tests token caching, SEO infrastructure, and performance optimizations
 """
 
+import sys
 import unittest
 import json
 import os
@@ -10,30 +11,20 @@ import tempfile
 import sqlite3
 from pathlib import Path
 
-# Test imports
-try:
-    from token_cache import TokenCache, get_cache
-    CACHE_AVAILABLE = True
-except ImportError:
-    CACHE_AVAILABLE = False
-
-try:
-    from seo_infrastructure import (
-        JSONLDGenerator, SitemapGenerator, RobotsGenerator,
-        MetaTagOptimizer, GSCSetup
-    )
-    SEO_AVAILABLE = True
-except ImportError:
-    SEO_AVAILABLE = False
-
-try:
-    from shared_performance import (
-        ImageOptimizer, CachingStrategy, CoreWebVitalsMonitor,
-        PerformanceBudget
-    )
-    PERF_AVAILABLE = True
-except ImportError:
-    PERF_AVAILABLE = False
+# Imported unconditionally. All three modules live in this repository, so an
+# ImportError means the suite itself is broken, not that an optional feature is
+# absent — and wrapping them in try/except turned a broken suite into a green
+# one: with token_cache.py removed the runner reported "17 run, 17 successes,
+# 0 failures" and exit code 0, having skipped every cache test.
+from token_cache import TokenCache, get_cache
+from seo_infrastructure import (
+    JSONLDGenerator, SitemapGenerator, RobotsGenerator,
+    MetaTagOptimizer, GSCSetup
+)
+from shared_performance import (
+    ImageOptimizer, CachingStrategy, CoreWebVitalsMonitor,
+    PerformanceBudget
+)
 
 
 class TestTokenCache(unittest.TestCase):
@@ -41,8 +32,6 @@ class TestTokenCache(unittest.TestCase):
 
     def setUp(self):
         """Point the cache at a throwaway SQLite file for this test."""
-        if not CACHE_AVAILABLE:
-            self.skipTest("token_cache module not available")
         self.temp_db = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
         self.temp_db.close()
         self.cache = TokenCache(self.temp_db.name)
@@ -157,11 +146,6 @@ class TestTokenCache(unittest.TestCase):
 class TestSEOInfrastructure(unittest.TestCase):
     """Test SEO infrastructure generation"""
 
-    def setUp(self):
-        """Skip the class when the SEO module is not importable."""
-        if not SEO_AVAILABLE:
-            self.skipTest("seo_infrastructure module not available")
-
     def test_organization_schema(self):
         """Test organization schema generation"""
         schema = JSONLDGenerator.organization()
@@ -269,11 +253,6 @@ class TestSEOInfrastructure(unittest.TestCase):
 
 class TestPerformanceOptimization(unittest.TestCase):
     """Test performance optimization utilities"""
-
-    def setUp(self):
-        """Skip the class when the performance module is not importable."""
-        if not PERF_AVAILABLE:
-            self.skipTest("shared_performance module not available")
 
     def test_vitals_db_migrates_from_the_fid_schema(self):
         """A database created before the INP rename must not break on insert.
@@ -395,21 +374,13 @@ class TestIntegration(unittest.TestCase):
 
     def test_all_modules_importable(self):
         """Test all Phase 1 modules can be imported"""
-        modules = []
-        if CACHE_AVAILABLE:
-            modules.append("token_cache")
-        if SEO_AVAILABLE:
-            modules.append("seo_infrastructure")
-        if PERF_AVAILABLE:
-            modules.append("shared_performance")
-
-        self.assertGreater(len(modules), 0, "At least one module should be available")
+        # "at least one of three" passed while two were missing. Reaching this
+        # line means every import at the top succeeded; assert all three.
+        for name in ("token_cache", "seo_infrastructure", "shared_performance"):
+            self.assertIn(name, sys.modules, f"{name} should be imported")
 
     def test_cache_with_seo_workflow(self):
         """Test caching with SEO infrastructure"""
-        if not (CACHE_AVAILABLE and SEO_AVAILABLE):
-            self.skipTest("Required modules not available")
-
         # Create cache
         temp_db = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
         temp_db.close()
