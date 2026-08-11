@@ -121,6 +121,42 @@ NOISE = re.compile(r"\b(webinar|podcast|subscribe|newsletter|photo of the day|"
                    r"motley fool|zacks|q[1-4] earnings|earnings call)\b", re.I)
 
 
+# is_relevant is a gate, not a ranking, and a gate alone published the wrong
+# things. The survivors were sorted by publication time and sliced, so a story
+# that cleared the gate an hour ago beat a better one that cleared it two hours
+# ago — a dry run took three solar-financing items while "Marginal costs for
+# hydrogen are falling" sat unselected in the same pool.
+#
+# These are the beats the site covers, heaviest first. An item scores the
+# highest band it matches, so a policy story is not penalised for failing to
+# mention a compressor.
+TOPIC_BANDS = [
+    # The subject itself.
+    (5, CORE),
+    # Balance of plant — the engineering the reader is here for.
+    (4, re.compile(r"\b(balance[- ]of[- ]plant|compressor|rectifier|desalination|"
+                   r"ultrapure|demineralis\w*|water\s+treatment|thermal\s+management|"
+                   r"piping|valve|gasket|sealing|stack|membrane|bipolar|"
+                   r"storage\s+tank)\b", re.I)),
+    # Government action. A scheme or a tender changes what gets built.
+    (4, re.compile(r"\b(mnre|pib|niti\s+aayog|cabinet|union\s+ministry|ministry\s+of|"
+                   r"central\s+government|government\s+of\s+india|sight\s+scheme|"
+                   r"national\s+green\s+hydrogen\s+mission|pli|subsid\w+|incentive|"
+                   r"polic\w+|scheme|tender|notification|guidelines|mandate|"
+                   r"regulat\w+)\b", re.I)),
+    # Standards and certification — small stories that change how plants are
+    # built and sold.
+    (3, re.compile(r"\b(iso|iec|astm|bis|standard\w*|certification|certifie[sd]|"
+                   r"accreditat\w+|guarantee[s]?\s+of\s+origin|protocol|"
+                   r"complian\w+|safety\s+code)\b", re.I)),
+    # Company activity with something concrete behind it. Below policy because
+    # a funding round rarely changes a design decision.
+    (2, re.compile(r"\b(commission\w+|awarded|contract|signs?|signed|mou|"
+                   r"joint\s+venture|acquisition|acquires|offtake|gigafactory|"
+                   r"manufactur\w+|plant|facility|project)\b", re.I)),
+]
+
+
 @dataclass
 class NewsItem:
     """One item from a publisher's feed, normalised across feed formats."""
@@ -134,6 +170,30 @@ class NewsItem:
     def age_hours(self) -> float:
         """Hours since publication."""
         return (datetime.now(timezone.utc) - self.published).total_seconds() / 3600
+
+    def topic_score(self) -> int:
+        """The heaviest TOPIC_BANDS band this item matches, or 0.
+
+        The title outweighs the summary: feed summaries often carry the
+        publisher's boilerplate sign-off, and matching "policy" in a footer
+        would promote a story that is not about one.
+        """
+        for weight, pattern in TOPIC_BANDS:
+            if pattern.search(self.title):
+                return weight
+        for weight, pattern in TOPIC_BANDS:
+            if pattern.search(self.summary):
+                return max(weight - 1, 0)
+        return 0
+
+    def rank(self) -> float:
+        """Sort key: what the story is about, with recency as the tiebreak.
+
+        Age is divided by 24 so that inside the 36-hour window it can only
+        reorder items of the same band. A fresher compressor story beats a
+        staler one; no amount of freshness lifts a stake sale above a tender.
+        """
+        return self.topic_score() - self.age_hours() / 24
 
 
 def _text(el, *names) -> str:
@@ -222,10 +282,62 @@ with new news says said after over into up out first
 """.split())
 
 
+# One quantity, several ways to write it. The same award was filed as
+# "30,000-Tonne", "30,000 tonnes" and "30 KTPA" by three different wires in a
+# single morning. Scaling the prefixed units to their base makes all three
+# produce the token 30000, which is what lets the figure check see them as one
+# story. Values are multipliers into tonnes.
+#
+# Mass only. Scaling power ratings too was tried and had to be removed: it
+# turned "Adani commissions 5 GW electrolyser factory" and "Reliance
+# commissions 5 GW electrolyser factory" into a shared 5000 and merged two
+# companies into one story. Plant capacities cluster on round numbers that
+# many unrelated projects share, so they identify nothing; an annual tonnage
+# belongs to one award.
+_UNIT_SCALE = {
+    "ktpa": 1_000, "kt": 1_000, "kilotonne": 1_000, "kilotonnes": 1_000,
+    "mtpa": 1_000_000, "mt": 1_000_000, "million": 1_000_000,
+}
+_QUANTITY = re.compile(
+    r"\b(\d+(?:\.\d+)?)\s*-?\s*(" + "|".join(sorted(_UNIT_SCALE, key=len, reverse=True)) + r")\b")
+
+
+def _scale_units(t: str) -> str:
+    """Rewrite prefixed quantities to their base figure.
+
+    "30 ktpa" becomes "30000", so it matches a wire that wrote "30,000
+    tonnes". The unit word is kept — it still carries meaning for the word
+    overlap check, and dropping it would make "30 GW" and "30 kt" identical.
+    """
+    def sub(m: re.Match) -> str:
+        """Replace one matched quantity with its scaled equivalent."""
+        value = float(m.group(1)) * _UNIT_SCALE[m.group(2)]
+        return f"{int(value)} {m.group(2)}"
+    return _QUANTITY.sub(sub, t)
+
+
 def _sig(t: str) -> frozenset:
-    """The significant words of a headline, for comparing two stories."""
-    return frozenset(w for w in re.findall(r"[a-z0-9]+", t.lower())
+    """The significant words of a headline, for comparing two stories.
+
+    Digit group separators are removed first, so "30,000-Tonne" and "30,000
+    tonnes" both yield the token "30000" rather than the useless "000".
+    """
+    t = re.sub(r"(?<=\d)[,\s](?=\d)", "", t.lower())
+    t = _scale_units(t)
+    return frozenset(w for w in re.findall(r"[a-z0-9]+", t)
                      if len(w) > 2 and w not in _DUP_STOP)
+
+
+def _figures(sig: frozenset) -> frozenset:
+    """The distinctive quantities in a headline.
+
+    Four digits and up, because that is where numbers stop being round. Two
+    unrelated plants are both plausibly "600 MW"; two reports of "30,000
+    tonnes" inside the same day are one award. Years are excluded even though
+    they clear the length test — half the sector's headlines mention 2030.
+    """
+    return frozenset(w for w in sig
+                     if w.isdigit() and len(w) >= 4 and not (1900 <= int(w) <= 2100))
 
 
 # Two wires filing the same announcement do not write the same headline.
@@ -242,21 +354,40 @@ DUP_OVERLAP = 0.7
 # by overlap, and only the exact key applies.
 DUP_MIN_SHARED = 5
 
+# Word overlap only catches a rewrite that reuses the wording. It does not
+# catch a genuine paraphrase: "India Awards 30,000-Tonne Green Hydrogen Supply
+# Contracts" and "Indian oil companies to consume 30,000 tonnes of green
+# hydrogen a year" are one announcement sharing three words, and both were
+# selected in a live dry run. What they do share is the figure. A quantity
+# this specific, reported twice inside the same 36-hour window with any topical
+# words in common, is one story told twice.
+#
+# Deliberately biased toward dropping. A false positive costs one article that
+# day; a false negative puts two versions of the same story on the site, which
+# is what produced the eleven near-identical hydrogen-train posts already
+# published.
+DUP_FIGURE_SUPPORT = 2
+
 
 def _is_duplicate(sig: frozenset, kept: list) -> bool:
     """Whether this headline restates one already kept.
 
-    Containment rather than Jaccard: a wire that adds detail produces a
-    superset, and "A to four oil refineries" should still match the shorter
-    "A to four refineries" even though the union has grown.
+    Two independent signals, because they fail on different things: word
+    overlap catches wire rewrites and misses paraphrases, and a shared figure
+    catches paraphrases of anything with a number in it.
     """
-    if len(sig) < DUP_MIN_SHARED:
-        return False
+    figures = _figures(sig)
     for other in kept:
-        if len(other) < DUP_MIN_SHARED:
-            continue
         shared = len(sig & other)
-        if shared >= DUP_MIN_SHARED and shared / min(len(sig), len(other)) >= DUP_OVERLAP:
+        # Containment rather than Jaccard: a wire that adds detail produces a
+        # superset, and "A to four oil refineries" should still match the
+        # shorter "A to four refineries" even though the union has grown.
+        if (len(sig) >= DUP_MIN_SHARED and len(other) >= DUP_MIN_SHARED
+                and shared >= DUP_MIN_SHARED
+                and shared / min(len(sig), len(other)) >= DUP_OVERLAP):
+            return True
+        common_figures = figures & _figures(other)
+        if common_figures and shared - len(common_figures) >= DUP_FIGURE_SUPPORT:
             return True
     return False
 
@@ -273,9 +404,22 @@ def collect(max_age_hours: int = 36) -> tuple[List[NewsItem], List[NewsItem], in
         for item in items:
             (india if item.region == "india" else world).append(item)
 
+    # One set of duplicate state across both regions, not one per region. A
+    # story reported with an India signal and again without one lands in
+    # different buckets, and a --count 3 run slices two from India and one from
+    # global — so the same announcement gets written up twice in one morning.
+    # India is cleaned first, so a story carried by both keeps the India slot.
+    seen: set[str] = set()
+    sigs: List[frozenset] = []
+
     def clean(items: List[NewsItem]) -> List[NewsItem]:
-        """Drop stale, off-topic and duplicate items, newest first."""
-        seen, sigs, out = set(), [], []
+        """Drop stale, off-topic and duplicate items, best first.
+
+        De-duplication runs newest-first, so when two wires carry one story the
+        surviving copy is the freshest. The survivors are then ordered by
+        rank(), which is what the caller slices.
+        """
+        out = []
         for i in sorted(items, key=lambda x: x.published, reverse=True):
             if i.age_hours() > max_age_hours:
                 continue
@@ -292,7 +436,7 @@ def collect(max_age_hours: int = 36) -> tuple[List[NewsItem], List[NewsItem], in
             seen.add(k)
             sigs.append(sig)
             out.append(i)
-        return out
+        return sorted(out, key=lambda x: x.rank(), reverse=True)
 
     return clean(india), clean(world), ok
 
@@ -303,5 +447,5 @@ if __name__ == "__main__":
     for label, items in (("INDIA", ind), ("GLOBAL", glo)):
         print(f"--- {label}: {len(items)} usable")
         for i in items[:6]:
-            print(f"   [{i.age_hours():4.0f}h] {i.title[:64]}")
+            print(f"   [score {i.topic_score()} | {i.age_hours():4.0f}h] {i.title[:60]}")
             print(f"           {i.publisher} — {i.link[:72]}")

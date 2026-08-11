@@ -19,10 +19,20 @@ wrong article on a live site at 04:10 UTC, with no one watching.
 from __future__ import annotations
 
 import unittest
+from datetime import datetime, timedelta, timezone
 
 from news_sources import (
-    NOISE, _is_duplicate, _norm, _sig, is_relevant, region_of,
+    NOISE, NewsItem, _is_duplicate, _norm, _sig, is_relevant, region_of,
 )
+
+
+def item(title: str, hours_old: float = 1, summary: str = "") -> NewsItem:
+    """A NewsItem carrying only the fields selection actually reads."""
+    return NewsItem(
+        title=title, link="https://example.com/x", publisher="Test",
+        published=datetime.now(timezone.utc) - timedelta(hours=hours_old),
+        summary=summary, region=region_of(f"{title} {summary}"),
+    )
 
 
 class TestRelevance(unittest.TestCase):
@@ -149,6 +159,54 @@ class TestDuplicates(unittest.TestCase):
         b = _sig("Indian Railways' first hydrogen train completes trial run")
         self.assertTrue(_is_duplicate(b, [a]))
 
+    def test_paraphrase_sharing_only_a_figure(self):
+        """One announcement, three words in common, both slots in a dry run.
+
+        Word overlap cannot see this. The quantity is what identifies it.
+        """
+        a = _sig("India Awards 30,000-Tonne Green Hydrogen Supply Contracts "
+                 "to Decarbonise Refineries")
+        b = _sig("Indian oil companies to consume 30,000 tonnes of green "
+                 "hydrogen a year")
+        self.assertTrue(_is_duplicate(b, [a]))
+
+    def test_digit_separators_do_not_break_the_figure(self):
+        """"30,000" must tokenise as 30000, not as the meaningless "000"."""
+        self.assertIn("30000", _sig("India awards 30,000-tonne contract"))
+        self.assertNotIn("000", _sig("India awards 30,000-tonne contract"))
+
+    def test_the_same_quantity_written_in_a_different_unit(self):
+        """"30 KTPA" and "30,000 tonnes" are one award, filed by two wires."""
+        a = _sig("India Awards 30,000-Tonne Green Hydrogen Supply Contracts "
+                 "to Decarbonise Refineries")
+        b = _sig("Four Refineries Awarded 30 KTPA Green Hydrogen Capacity "
+                 "Under SIGHT")
+        self.assertTrue(_is_duplicate(b, [a]))
+
+    def test_round_plant_capacities_are_not_fingerprints(self):
+        """Two unrelated plants are both plausibly 600 MW."""
+        a = _sig("NEOM starts up 600 MW electrolyser in Saudi Arabia")
+        b = _sig("Iberdrola commissions 600 MW electrolyser in Spain")
+        self.assertFalse(_is_duplicate(b, [a]))
+
+    def test_a_shared_figure_alone_is_not_enough(self):
+        """Unrelated stories that happen to share a number stay separate."""
+        a = _sig("Steel mill orders 500 tonne press")
+        b = _sig("Shipping firm books 500 containers")
+        self.assertFalse(_is_duplicate(b, [a]))
+
+    def test_years_do_not_fingerprint_a_story(self):
+        """Half the sector's headlines mention 2030; it identifies nothing."""
+        a = _sig("EU sets 2030 hydrogen import target of 10 million tonnes")
+        b = _sig("Japan reviews 2030 ammonia co-firing roadmap")
+        self.assertFalse(_is_duplicate(b, [a]))
+
+    def test_different_projects_with_different_figures(self):
+        """Same sentence shape, different plants, different numbers."""
+        a = _sig("NEOM starts up 600 MW electrolyser in Saudi Arabia")
+        b = _sig("ACME commissions 300 MW green ammonia plant in Oman")
+        self.assertFalse(_is_duplicate(b, [a]))
+
     def test_two_companies_doing_the_same_thing_are_two_stories(self):
         """Shape is not identity. These share three words of four."""
         a = _sig("Adani commissions 5 GW electrolyser factory")
@@ -180,6 +238,55 @@ class TestDuplicates(unittest.TestCase):
             _norm("Centre Awards 30 KTPA Green Hydrogen Capacity!"),
             _norm("centre awards 30 ktpa green hydrogen capacity"),
         )
+
+
+class TestRanking(unittest.TestCase):
+    """Clearing the gate is not the same as deserving the slot.
+
+    Before rank() existed the survivors were sorted by publication time and
+    sliced, so the freshest passing story won regardless of what it was about.
+    """
+
+    def test_the_subject_scores_the_top_band(self):
+        """A hydrogen story is what this site is for."""
+        self.assertEqual(item("Marginal costs for hydrogen are falling").topic_score(), 5)
+
+    def test_balance_of_plant_scores(self):
+        """The plant around the stack is the reader's actual job."""
+        self.assertGreaterEqual(
+            item("Prozeal starts construction of ultrapure water treatment skid").topic_score(), 4)
+
+    def test_government_action_scores(self):
+        """A tender or a scheme changes what gets built."""
+        self.assertGreaterEqual(
+            item("MNRE notifies revised guidelines for electrolyser manufacturing").topic_score(), 4)
+
+    def test_standards_score(self):
+        """Small stories that change how plants are built and sold."""
+        self.assertGreaterEqual(
+            item("BIS notifies revised safety code for storage").topic_score(), 3)
+
+    def test_recency_cannot_beat_the_subject(self):
+        """A 30-hour hydrogen story outranks a company item filed minutes ago."""
+        stale = item("Marginal costs for hydrogen are falling", hours_old=30)
+        fresh = item("Developer signs joint venture for a battery project", hours_old=0)
+        self.assertGreater(stale.rank(), fresh.rank())
+
+    def test_recency_breaks_ties_inside_a_band(self):
+        """Same beat, so the newer one wins."""
+        fresh = item("Electrolyser stack degradation study published", hours_old=1)
+        old = item("Electrolyser membrane research published", hours_old=30)
+        self.assertGreater(fresh.rank(), old.rank())
+
+    def test_summary_only_match_ranks_below_a_headline_match(self):
+        """A term in the footer is weaker evidence than one in the headline.
+
+        Both of these reach the policy band; only one is about a policy.
+        """
+        headline = item("Cabinet clears tender for four refineries")
+        footer = item("Firm appoints a new managing director",
+                      summary="Read our policy and guidelines page")
+        self.assertGreater(headline.topic_score(), footer.topic_score())
 
 
 if __name__ == "__main__":
