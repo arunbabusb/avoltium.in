@@ -1,0 +1,73 @@
+name: Publish sourced news
+
+# Twice a day, three articles total. The cadence is deliberate: Google's
+# scaled content abuse policy targets high-volume generated publishing, and
+# the aim here is a site that survives Publisher Center review, so this stays
+# at three a day rather than the ten that was first considered.
+#
+# Times are UTC. 04:10 lands mid-morning in India, 13:40 catches the European
+# and US morning wires.
+# One run a day, not two: two runs each defaulting to three would have
+# published six, which is exactly the number this file argues against.
+on:
+  schedule:
+    - cron: "10 4 * * *"
+  workflow_dispatch:
+    inputs:
+      count:
+        description: "Total articles to publish"
+        required: false
+        default: "3"
+      dry_run:
+        description: "Select and log only, publish nothing"
+        type: boolean
+        required: false
+        default: false
+
+concurrency:
+  group: publish-news
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install requests pillow python-dotenv
+
+      - name: Show what the feeds are offering
+        run: python news_sources.py
+
+      - name: Publish
+        env:
+          # Through env, never interpolated into the script body. A dispatch
+          # input expanded inline can close the assignment and run arbitrary
+          # shell — in this step, next to WP_APP_PASSWORD and GEMINI_API_KEY.
+          COUNT: ${{ inputs.count || '3' }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          WP_URL: ${{ secrets.WP_URL }}
+          WP_USERNAME: ${{ secrets.WP_USERNAME }}
+          WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          OMNIROUTE_BASE_URL: ${{ secrets.OMNIROUTE_BASE_URL }}
+          OMNIROUTE_API_KEY: ${{ secrets.OMNIROUTE_API_KEY }}
+        run: |
+          set -euo pipefail
+          case "$COUNT" in
+            ''|*[!0-9]*) echo "count must be a whole number" >&2; exit 2 ;;
+          esac
+          if [ "$COUNT" -lt 1 ] || [ "$COUNT" -gt 6 ]; then
+            echo "count must be between 1 and 6" >&2; exit 2
+          fi
+          if [ "$DRY_RUN" = "true" ]; then
+            python publish_news.py --count "$COUNT"
+          else
+            python publish_news.py --count "$COUNT" --execute
+          fi

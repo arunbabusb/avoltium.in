@@ -203,7 +203,56 @@ a bracketed numerator/denominator — never `\frac`.
 
 ---
 
-## 8. Enforcement
+## 8. Provenance — say where it came from, and never invent it
+
+**The rule: an article states who stands behind it, when it was last updated,
+and that AI assisted the drafting. A link is only ever presented as evidence
+for a sentence if the article was written from it.**
+
+Every published post carries a provenance block (`editorial_provenance.py`),
+holding a named byline, the last-updated date, the AI-assistance disclosure,
+and *Further reading*.
+
+### Further reading is not a citation list
+
+The distinction is the whole rule. *Further reading* is authoritative
+background on the subject. A **source** is the document a specific claim was
+taken from, and it can only be recorded at the moment the claim is written.
+
+When the first 49 posts were audited, none carried a source URL and not one
+linked outside the site — they had been generated from topic prompts, not from
+documents. A "Sources" list bolted on afterwards could only contain links
+chosen because they *looked* like they might support the text. That is a
+fabricated citation: an engineer who follows one, finds it does not say what
+the sentence says, and stops trusting the site. It is the same failure as an
+image file named "IISc hydrogen plant" that turns out to be a street with a
+scooter on it — a label that promises evidence and does not carry it.
+
+So: never add a citation retroactively. Fix it at generation time instead.
+
+### Checking a link before it ships
+
+- Fetch it. Only a **200 on the final URL** may be published.
+- **Read where it redirected to.** Two energy.gov links returned 200 after
+  redirecting to unrelated offices, and the DOE "Hydrogen Shot" page 404s.
+  All three would have looked perfectly plausible pasted in unchecked.
+- A 403 is not permission to guess — IEA, IRENA and ISO block automated
+  fetches, so their pages cannot be verified this way and are not published
+  as verified.
+
+### The disclosure has to be true
+
+The wording says *drafted with AI assistance and checked against these
+standards* because that is exactly what the pipeline does: it drafts with a
+model and gates on `qc_check.py`. It does **not** claim a human line-edited
+the piece, because for most posts none has. Overstating review is worse than
+disclosing none — it is the specific claim a reader can catch you in.
+
+If a human does review an article, strengthen the wording *for that article*.
+
+---
+
+## 9. Enforcement
 
 ```bash
 # Audit every published post; exit code 1 if any blocker is found

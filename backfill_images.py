@@ -28,6 +28,7 @@ import logging
 import os
 import re
 import sys
+import urllib.parse
 
 import requests
 
@@ -44,9 +45,104 @@ WP_APP_PASSWORD = os.environ.get("WP_APP_PASSWORD") or ""
 POSTS_READ = f"{WP_URL}/wp-json/wp/v2/posts"
 POSTS_WRITE = f"{WP_URL}/?rest_route=/wp/v2/posts"
 MEDIA_WRITE = f"{WP_URL}/?rest_route=/wp/v2/media"
+MEDIA_READ = f"{WP_URL}/wp-json/wp/v2/media"
+
+# Nothing legitimate on Commons or Openverse is anywhere near this, and the
+# whole body is held in memory before it is decoded.
+MAX_DOWNLOAD_BYTES = 40 * 1024 * 1024
+
+# A byte limit does not bound memory: a highly compressible image decodes to
+# width * height * 3 bytes however small the file was. Pillow warns past its
+# own default and only raises at twice that, so set an explicit ceiling. A
+# 60-megapixel photograph is far larger than anything this site publishes.
+MAX_IMAGE_PIXELS = 60_000_000
+
+# The URL comes from a third-party search response, and requests follows
+# redirects by default, so without this the host can be pointed at anything
+# reachable from the machine — including link-local metadata endpoints.
+ALLOWED_IMAGE_HOSTS = (
+    "upload.wikimedia.org",
+    "commons.wikimedia.org",
+    "api.openverse.org",
+    "openverse.org",
+)
+
+
+def _host_allowed(url: str) -> bool:
+    """Whether `url` is https on one of the hosts images may come from."""
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme != "https":
+        return False
+    host = (parsed.hostname or "").lower()
+    return any(host == h or host.endswith("." + h) for h in ALLOWED_IMAGE_HOSTS)
+
+
+class FetchError(RuntimeError):
+    """A remote read failed or returned something unusable.
+
+    Raised both when a page of results cannot be read — leaving the list on
+    hand incomplete — and when a candidate image is rejected.
+    """
+
+
+def download_image(url: str, user_agent: str, timeout: int = 90) -> bytes:
+    """Fetch an image, bounded in size and verified to actually be an image.
+
+    Both guards matter because the URL comes from a third-party search result.
+    A 404 or a rate-limit page is served as HTML with a 200 often enough that
+    checking the status alone is not sufficient, and an unbounded read of a
+    remote body into memory is a denial of service waiting to be pointed at
+    the wrong link.
+
+    Raises FetchError on anything that is not a decodable image.
+    """
+    if not _host_allowed(url):
+        raise FetchError(f"host not in the image allowlist: {url[:80]}")
+    # allow_redirects=False because a 302 to an internal address would be
+    # followed before any of the checks above could see the new URL.
+    with requests.get(url, timeout=timeout, stream=True, allow_redirects=False,
+                      headers={"User-Agent": user_agent}) as r:
+        if r.is_redirect or r.is_permanent_redirect:
+            raise FetchError(f"refused to follow a redirect to "
+                             f"{r.headers.get('Location', '?')[:80]}")
+        if r.status_code != 200:
+            raise FetchError(f"HTTP {r.status_code}")
+        chunks, total = [], 0
+        for chunk in r.iter_content(64 * 1024):
+            total += len(chunk)
+            if total > MAX_DOWNLOAD_BYTES:
+                raise FetchError(f"larger than {MAX_DOWNLOAD_BYTES // (1024 * 1024)} MB")
+            chunks.append(chunk)
+    data = b"".join(chunks)
+    if len(data) < 10_000:
+        raise FetchError(f"only {len(data)} bytes")
+    verify_image(data)
+    return data
+
+
+def verify_image(data: bytes) -> None:
+    """Raise FetchError unless `data` is a decodable image of sane dimensions.
+
+    The size check happens before verify() and before anything calls
+    convert("RGB"), because the header is enough to know the dimensions and
+    the decode is what would allocate the memory.
+    """
+    from PIL import Image as _Image
+    try:
+        im = _Image.open(io.BytesIO(data))
+        pixels = im.width * im.height
+        if pixels > MAX_IMAGE_PIXELS:
+            raise FetchError(f"{im.width}x{im.height} is {pixels / 1e6:.0f} MP, "
+                             f"over the {MAX_IMAGE_PIXELS / 1e6:.0f} MP limit")
+        im.verify()
+    except FetchError:
+        raise
+    except Exception as exc:
+        raise FetchError(f"not a decodable image ({exc})") from exc
 
 
 def session() -> requests.Session:
+    """A requests session carrying the WordPress application-password auth."""
     s = requests.Session()
     s.auth = (WP_USERNAME, WP_APP_PASSWORD)
     s.headers.update({"User-Agent": "avoltium-backfill/1.0"})
@@ -54,18 +150,29 @@ def session() -> requests.Session:
 
 
 def slugify(text: str, limit: int = 48) -> str:
+    """Lowercase hyphenated slug for a filename, capped at `limit` characters.
+
+    The result is public: WordPress serves the uploaded file at a URL built
+    from this, so a working title leaks if it is passed in here.
+    """
     s = re.sub(r"[^a-z0-9]+", "-", (text or "").lower()).strip("-")
     return (s[:limit].rstrip("-")) or "figure"
 
 
 def fetch_posts(s: requests.Session, per_page: int = 100):
+    """Every published post with the fields this script needs, paginated.
+
+    Raises FetchError if any page fails. Returning what had been collected so
+    far let a failure on page two look like a short site: the run would report
+    success having quietly skipped every post after the hundredth.
+    """
     out, page = [], 1
     while True:
         r = s.get(POSTS_READ, params={"per_page": per_page, "page": page,
                                       "_fields": "id,title,link,featured_media"},
                   timeout=45)
         if r.status_code != 200:
-            break
+            raise FetchError(f"page {page} of posts: HTTP {r.status_code}")
         batch = r.json()
         if not batch:
             break
@@ -95,8 +202,16 @@ def compress(data: bytes, filename: str) -> tuple[bytes, str, str]:
     PNG is already small.
     """
     from PIL import Image as _Image
+    # Both branches, not just the PNG one. convert("RGB") below allocates on
+    # the decoded dimensions, so the pixel ceiling has to clear before it —
+    # and verifying only the branch that does no decoding was backwards.
+    # Callers reaching here through download_image have already been checked;
+    # a header parse is cheap enough not to care.
+    verify_image(data)
     if filename.lower().endswith(".png"):
-        return data, "image/png", filename          # diagrams: already ~45 KB
+        # Diagrams are rendered here and are already ~45 KB, so there is
+        # nothing to gain by re-encoding.
+        return data, "image/png", filename
     try:
         im = _Image.open(io.BytesIO(data))
         im = im.convert("RGB")
@@ -116,6 +231,14 @@ def compress(data: bytes, filename: str) -> tuple[bytes, str, str]:
 
 def upload(s: requests.Session, data: bytes, filename: str, mime: str,
            alt: str, caption: str = "") -> int | None:
+    """Upload bytes to the media library and return the new attachment id.
+
+    Returns None when the upload is rejected, so the caller can skip the post
+    rather than assign a featured image that does not exist. The metadata
+    write counts as part of the upload: an attachment with no alt text is
+    inaccessible, and for a CC BY image the caption is the licence condition,
+    so an attachment missing either is not a usable result.
+    """
     r = s.post(MEDIA_WRITE, data=data, timeout=120, headers={
         "Content-Type": mime,
         "Content-Disposition": f'attachment; filename="{filename}"',
@@ -126,16 +249,32 @@ def upload(s: requests.Session, data: bytes, filename: str, mime: str,
     media_id = r.json().get("id")
     # Alt text is set in a second call: the upload endpoint takes the binary as
     # the body, so there is nowhere to put metadata in the same request.
-    s.post(f"{MEDIA_WRITE}/{media_id}", json={"alt_text": alt, "caption": caption},
-           timeout=45)
+    meta = s.post(f"{MEDIA_WRITE}/{media_id}", json={"alt_text": alt, "caption": caption},
+                  timeout=45)
+    if meta.status_code != 200:
+        meta = s.post(f"{MEDIA_WRITE}/{media_id}", json={"alt_text": alt, "caption": caption},
+                      timeout=45)
+    if meta.status_code != 200:
+        # Leaving the attachment behind would put an uncredited image in the
+        # library for someone to find and use later, which is the failure this
+        # is guarding against in the first place.
+        logger.error("  metadata write failed: HTTP %s — deleting attachment %s",
+                     meta.status_code, media_id)
+        s.delete(f"{MEDIA_WRITE}/{media_id}", params={"force": "true"}, timeout=45)
+        return None
     return media_id
 
 
 def plain_title(post) -> str:
+    """The post title with HTML tags and entities removed."""
     return html.unescape(re.sub(r"<[^>]+>", "", post["title"]["rendered"])).strip()
 
 
 def main() -> int:
+    """Assign a diagram or a licensed photo to every post that has no image.
+
+    Dry run by default; `--execute` performs the uploads.
+    """
     ap = argparse.ArgumentParser()
     ap.add_argument("--execute", action="store_true")
     ap.add_argument("--limit", type=int, default=0, help="0 = all matching posts")
@@ -147,11 +286,20 @@ def main() -> int:
         return 2
 
     s = session()
-    posts = fetch_posts(s)
+    try:
+        posts = fetch_posts(s)
+    except FetchError as exc:
+        logger.error("Could not read the post list: %s", exc)
+        return 1
     logger.info("Fetched %d posts", len(posts))
 
     planned = []
     for p in posts:
+        # Backfill means backfill. Without this the script re-images posts
+        # that already have one, replacing images a human chose and leaving a
+        # duplicate attachment behind on every run.
+        if p.get("featured_media"):
+            continue
         title = plain_title(p)
         if args.only and args.only.lower() not in title.lower():
             continue
@@ -181,9 +329,8 @@ def main() -> int:
             caption = dg.caption
         else:
             try:
-                data = requests.get(hit.url, timeout=90,
-                                    headers={"User-Agent": image_sourcing.USER_AGENT}).content
-            except Exception as exc:
+                data = download_image(hit.url, image_sourcing.USER_AGENT)
+            except (FetchError, requests.RequestException) as exc:
                 logger.error("  fetch failed: %s", exc)
                 failed += 1
                 continue
@@ -195,7 +342,12 @@ def main() -> int:
             caption = re.sub(r"<[^>]+>", "", hit.attribution_html()) if hit.needs_credit else ""
 
         before = len(data)
-        data, mime, filename = compress(data, filename)
+        try:
+            data, mime, filename = compress(data, filename)
+        except FetchError as exc:
+            logger.error("  rejected: %s", exc)
+            failed += 1
+            continue
         if len(data) != before:
             logger.info("  compressed %d KB -> %d KB", before // 1024, len(data) // 1024)
 
@@ -219,7 +371,7 @@ def main() -> int:
                 "EXECUTE" if args.execute else "DRY-RUN", changed, failed, len(planned))
     if not args.execute:
         logger.info("Nothing written. Re-run with --execute.")
-    return 0
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":

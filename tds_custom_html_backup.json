@@ -1,0 +1,6 @@
+{
+  "option": "td_011",
+  "key": "tds_custom_html",
+  "value": "<script async src=\\\"https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-8459363476525914\\\"\r\n     crossorigin=\\\"anonymous\\\"></script>",
+  "note": "`value` is the exact string get_option('td_011')['tds_custom_html'] returned, including the backslashes before each quote. WordPress slashed it when the theme panel saved it and tagDiv runs stripslashes() on output, which is why the rendered page showed clean quotes. Do not 'fix' the escaping: --restore writes this value back with update_option, and only the slashed form reproduces the database state that was there before."
+}

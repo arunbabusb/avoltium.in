@@ -50,6 +50,7 @@ ACCENT_SOFT = (222, 236, 244)
 
 
 def _font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont:
+    """A TrueType face at `size`, falling back to Pillow's bitmap font."""
     names = (["DejaVuSans-Bold.ttf", "LiberationSans-Bold.ttf"] if bold
              else ["DejaVuSans.ttf", "LiberationSans-Regular.ttf"])
     for name in names:
@@ -65,16 +66,50 @@ def _font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont:
 
 @dataclass
 class Stage:
+    """One labelled box in a diagram, with optional second-line detail."""
     label: str
     detail: str = ""
 
 
 @dataclass
 class Diagram:
+    """A figure: a title, a caption, and the boxes to draw between them."""
     title: str
     caption: str
     stages: List[Stage] = field(default_factory=list)
     footnote: str = ""
+    # Arrows assert that one box leads to the next. That is true of a
+    # feedwater train and false of a comparison: drawing AEL -> PEM -> SOEC
+    # claims a progression between three alternatives that a reader is
+    # supposed to choose between. Comparisons set this False.
+    sequential: bool = True
+
+
+@dataclass
+class Layer:
+    """One band in a cross-section, drawn to scale-ish thickness."""
+    label: str
+    detail: str = ""
+    weight: int = 1          # relative thickness
+    tint: tuple = (255, 255, 255)
+
+
+@dataclass
+class CrossSection:
+    """A layered cutaway, for articles about what a cell is made of.
+
+    The stage renderer draws a left-to-right process. A membrane electrode
+    assembly is not a process — it is a sandwich, and the thing a reader needs
+    is which layer sits against which, and how thick each is relative to its
+    neighbours. Drawing that as five boxes with arrows between them would
+    assert a flow that does not exist.
+    """
+    title: str
+    caption: str
+    layers: List[Layer] = field(default_factory=list)
+    footnote: str = ""
+    left_note: str = ""
+    right_note: str = ""
 
 
 def _wrap(draw, text, font, max_width) -> List[str]:
@@ -100,6 +135,7 @@ def _wrap(draw, text, font, max_width) -> List[str]:
 
 
 def render(diagram: Diagram) -> Image.Image:
+    """Draw a diagram to an RGB image at the module's fixed canvas size."""
     img = Image.new("RGB", (WIDTH, HEIGHT), BG)
     d = ImageDraw.Draw(img)
 
@@ -110,7 +146,14 @@ def render(diagram: Diagram) -> Image.Image:
     f_foot = _font(15)
 
     margin = 60
-    d.text((margin, 52), diagram.title, font=f_title, fill=INK)
+    # The title is one line by design. A long one used to run off the right
+    # edge and get cropped by the canvas — "…repeat the solar cost curve"
+    # lost its last two words — so step the size down until it fits.
+    size = 38
+    while size > 24 and d.textlength(diagram.title, font=f_title) > WIDTH - 2 * margin:
+        size -= 2
+        f_title = _font(size, bold=True)
+    d.text((margin, 52 + (38 - size) // 2), diagram.title, font=f_title, fill=INK)
 
     y = 108
     for line in _wrap(d, diagram.caption, f_cap, WIDTH - 2 * margin)[:2]:
@@ -131,6 +174,20 @@ def render(diagram: Diagram) -> Image.Image:
     # between the rule and the footnote. Stretching boxes to fill the frame
     # just moved the empty space inside them.
     LABEL_LH, DETAIL_LH, PAD_TOP, PAD_BOT, LABEL_GAP = 27, 21, 30, 26, 8
+
+    # A label word longer than its box cannot be wrapped, so it used to be
+    # drawn straight over the border — "Pre-commissioning" and
+    # "Instrumentation" both spilled out in five-box diagrams. Shrink the
+    # label font until the longest single word fits.
+    longest = max((w for st in diagram.stages for w in st.label.split()),
+                  key=lambda w: d.textlength(w, font=f_box), default="")
+    # Track the size separately: the bitmap fallback from _font() does not
+    # promise a .size attribute, and reading it would raise mid-render.
+    box_size = 21
+    while d.textlength(longest, font=f_box) > box_w - 28 and box_size > 15:
+        box_size -= 1
+        f_box = _font(box_size, bold=True)
+
     wrapped = []
     for stage in diagram.stages:
         lab = _wrap(d, stage.label, f_box, box_w - 28)[:3]
@@ -169,7 +226,7 @@ def render(diagram: Diagram) -> Image.Image:
                 d.text((x0 + (box_w - tw) / 2, ty), line, font=f_detail, fill=MUTED)
                 ty += DETAIL_LH
 
-        if i < n - 1:
+        if diagram.sequential and i < n - 1:
             ax0 = x1 + 8
             ax1 = x1 + gap - 8
             ay = band_top + band_h / 2
@@ -184,6 +241,138 @@ def render(diagram: Diagram) -> Image.Image:
 
     d.rectangle([0, HEIGHT - 6, WIDTH, HEIGHT], fill=ACCENT_SOFT)
     return img
+
+
+def render_cross_section(cs: CrossSection) -> Image.Image:
+    """Draw a layered cutaway with the stack running left to right."""
+    img = Image.new("RGB", (WIDTH, HEIGHT), BG)
+    d = ImageDraw.Draw(img)
+
+    f_title = _font(38, bold=True)
+    f_cap = _font(20)
+    f_lab = _font(17, bold=True)
+    f_det = _font(14)
+    f_foot = _font(15)
+    f_side = _font(16, bold=True)
+
+    margin = 60
+    size = 38
+    while size > 24 and d.textlength(cs.title, font=f_title) > WIDTH - 2 * margin:
+        size -= 2
+        f_title = _font(size, bold=True)
+    d.text((margin, 52 + (38 - size) // 2), cs.title, font=f_title, fill=INK)
+
+    y = 108
+    for line in _wrap(d, cs.caption, f_cap, WIDTH - 2 * margin)[:2]:
+        d.text((margin, y), line, font=f_cap, fill=MUTED)
+        y += 26
+    d.line([(margin, y + 14), (WIDTH - margin, y + 14)], fill=RULE, width=2)
+
+    if not cs.layers:
+        return img
+
+    # Bands run left-to-right; labels alternate above and below so adjacent
+    # thin layers (a catalyst coat next to a membrane) do not collide. The
+    # band has to start far enough down that a two-line label with a two-line
+    # detail still clears the caption rule above it — at the first attempt the
+    # "Cathode catalyst" label was drawn straight through the caption.
+    rule_y = y + 14
+    LEADER, MAX_LABEL_H = 14, 76
+    top = rule_y + LEADER + MAX_LABEL_H + 16
+    band_h = 150
+    total_w = WIDTH - 2 * margin
+    weights = sum(max(1, layer.weight) for layer in cs.layers)
+    x = margin
+    for i, layer in enumerate(cs.layers):
+        w = total_w * max(1, layer.weight) / weights
+        d.rectangle([x, top, x + w, top + band_h], fill=layer.tint, outline=RULE, width=2)
+
+        above = i % 2 == 0
+        cx = x + w / 2
+        leader_y = top - 4 if above else top + band_h + 4
+        tip_y = top - LEADER if above else top + band_h + LEADER
+        d.line([(cx, leader_y), (cx, tip_y)], fill=RULE, width=2)
+
+        lab = _wrap(d, layer.label, f_lab, max(w + 44, 120))[:2]
+        det = _wrap(d, layer.detail, f_det, max(w + 44, 120))[:2] if layer.detail else []
+        block_h = len(lab) * 20 + len(det) * 17
+        ty = tip_y - block_h if above else tip_y
+        for line in lab:
+            tw = d.textlength(line, font=f_lab)
+            d.text((cx - tw / 2, ty), line, font=f_lab, fill=INK)
+            ty += 20
+        for line in det:
+            tw = d.textlength(line, font=f_det)
+            d.text((cx - tw / 2, ty), line, font=f_det, fill=MUTED)
+            ty += 17
+        x += w
+
+    # Electrode-side captions sit inside the outer faces, inset far enough not
+    # to be clipped by the frame — right-aligning flush to the margin put
+    # "H₂ out" half off the canvas.
+    mid = top + band_h / 2
+    INSET = 16
+    if cs.left_note:
+        d.text((margin + INSET, mid - 9), cs.left_note, font=f_side, fill=ACCENT)
+    if cs.right_note:
+        tw = d.textlength(cs.right_note, font=f_side)
+        d.text((WIDTH - margin - INSET - tw, mid - 9), cs.right_note, font=f_side, fill=ACCENT)
+
+    if cs.footnote:
+        fy = HEIGHT - 58
+        for line in _wrap(d, cs.footnote, f_foot, WIDTH - 2 * margin)[:2]:
+            d.text((margin, fy), line, font=f_foot, fill=MUTED)
+            fy += 20
+
+    d.rectangle([0, HEIGHT - 6, WIDTH, HEIGHT], fill=ACCENT_SOFT)
+    return img
+
+
+# Cross-sections keyed the same way as DIAGRAMS. Every layer and figure is
+# asserted by the articles these illustrate.
+CROSS_SECTIONS: Dict[str, CrossSection] = {
+    "pem electrolyzer": CrossSection(
+        title="Inside a PEM electrolysis cell",
+        caption="The membrane electrode assembly, anode on the left, cathode on the right.",
+        left_note="O₂ out",
+        right_note="H₂ out",
+        layers=[
+            Layer("Bipolar plate", "Titanium flow field", 3, (226, 232, 240)),
+            Layer("Porous transport layer", "Sintered titanium", 2, (203, 213, 225)),
+            Layer("Anode catalyst", "Iridium oxide", 1, (191, 219, 254)),
+            Layer("PFSA membrane", "Proton conduction\nGas separation", 2, (255, 247, 214)),
+            Layer("Cathode catalyst", "Platinum on carbon", 1, (187, 247, 208)),
+            Layer("Porous transport layer", "Carbon paper", 2, (203, 213, 225)),
+            Layer("Bipolar plate", "Flow field", 3, (226, 232, 240)),
+        ],
+        footnote="Band widths are relative, not to scale. The catalyst layers are the "
+                 "thinnest and the most expensive part of the cell, and the two the "
+                 "article's degradation section is about.",
+    ),
+    "bipolar plate": CrossSection(
+        title="Where a bipolar plate sits, and what it has to survive",
+        caption="The plate carries current and flow, and faces the harshest chemistry in the cell.",
+        left_note="Anode side",
+        right_note="Cathode side",
+        layers=[
+            Layer("Coating", "Passivation against\noxidation", 1, (254, 226, 226)),
+            Layer("Substrate", "Titanium or coated\nstainless", 4, (226, 232, 240)),
+            Layer("Flow field", "Machined or formed\nchannels", 3, (203, 213, 225)),
+            Layer("Contact face", "Against the porous\ntransport layer", 2, (191, 219, 254)),
+        ],
+        footnote="Contact resistance at the plate interface and coating integrity set both "
+                 "cell efficiency and how long the plate lasts under load cycling.",
+    ),
+}
+
+
+def cross_section_for(title: str) -> Optional[CrossSection]:
+    """Match an article title to a cross-section, longest key first."""
+    t = (title or "").lower()
+    for key in sorted(CROSS_SECTIONS, key=len, reverse=True):
+        if key in t:
+            return CROSS_SECTIONS[key]
+    return None
 
 
 # Diagrams keyed by a topic fragment matched case-insensitively against the
@@ -273,6 +462,93 @@ DIAGRAMS: Dict[str, Diagram] = {
         footnote="Recovered heat is low grade. It is worth capturing only where an offtaker "
                  "sits close enough for the pipework to pay back.",
     ),
+    # The six below cover articles whose subject is a comparison, a cost
+    # structure or a shift in emphasis. None of them has an honest photograph:
+    # a search for their subjects returns either abstractions or, in the worst
+    # case, something actively misleading — "green hydrogen plant" on Commons
+    # returns chlorophyll molecule renders. Every figure is taken from the
+    # article it illustrates.
+    "green hydrogen explained": Diagram(
+        title="Three commercial electrolyser architectures",
+        caption="How the mature routes differ where it matters for plant design.",
+        stages=[
+            Stage("Alkaline (AEL)", "KOH 20-30 wt%, nickel electrodes\n60-90 °C, up to 30 bar\n"
+                                    "0.2-0.6 A/cm², slow to ramp"),
+            Stage("PEM", "PFSA membrane, IrO₂ and Pt\n1.5-3.0 A/cm²\n"
+                         "Sub-second ramp, 5-120% turndown"),
+            Stage("Solid oxide (SOEC)", "Yttria-stabilised zirconia\n650-850 °C\n"
+                                        "Trades electricity for heat"),
+        ],
+        footnote="Splitting water needs 33.3 kWh/kg H₂ on the lower heating value. Real "
+                 "systems draw 48-65 kWh/kg once overpotentials, separation and rectification "
+                 "are counted.",
+        sequential=False,
+    ),
+    "lcoh": Diagram(
+        title="What sets the levelised cost of hydrogen",
+        caption="The five terms in the LCOH numerator, and the one that dominates.",
+        stages=[
+            Stage("Capital recovery", "CAPEX × capital recovery factor\nStack, power "
+                                      "electronics, BoP"),
+            Stage("Electricity", "Specific energy use × price\n65-85% of production cost"),
+            Stage("Fixed O&M", "Annual operations\nIndependent of output"),
+            Stage("Stack replacement", "Annualised set-aside\nDriven by degradation rate"),
+            Stage("Feedwater", "Treatment to stack purity\nSmall but not zero"),
+        ],
+        footnote="Output scales as rated power × capacity factor × 8760 ÷ specific energy "
+                 "consumption, so cheap intermittent power and high utilisation pull against "
+                 "each other.",
+    ),
+    "degradation mitigation": Diagram(
+        title="Where an electrolyser degrades, and what arrests it",
+        caption="Three failure paths and the materials answer to each.",
+        stages=[
+            Stage("Anode catalyst", "Iridium dissolution\nPyrochlore-structured catalysts"),
+            Stage("Porous transport layer", "Titanium oxidation\nALD-deposited coatings"),
+            Stage("Membrane", "Radical attack on PFSA\nImmobilised radical scavengers"),
+        ],
+        footnote="The target is beyond 80,000 hours at 2.0-3.0 A/cm² under dynamic load "
+                 "cycling, which no single one of these measures reaches alone.",
+        sequential=False,
+    ),
+    "certification": Diagram(
+        title="What a green hydrogen certificate has to prove",
+        caption="Certification is continuous telemetry, not a post-audit paperwork step.",
+        stages=[
+            Stage("Renewable intake", "Power source and timing\nGrid coupling accounted"),
+            Stage("Electrolyser", "Stack energy per kilogram\nDegradation tracked in service"),
+            Stage("Water treatment", "Polishing energy included\nInside the system boundary"),
+            Stage("Mass balance", "Metered production\nReconciled against inputs"),
+            Stage("Certificate", "Issued against the record\nAuditable end to end"),
+        ],
+        footnote="India's National Green Hydrogen Mission caps lifecycle carbon intensity at "
+                 "2.0 kg CO₂e per kg H₂, averaged over a rolling 12-month window.",
+    ),
+    "learning curve": Diagram(
+        title="Why electrolysers will not repeat the solar cost curve",
+        caption="Learning rates come from repeat-unit manufacturing, which a plant is not.",
+        stages=[
+            Stage("Solar PV", "~24% learning rate\nSolid-state modular product"),
+            Stage("Li-ion cells", "Above 20% learning rate\nAutomated repeat-unit lines"),
+            Stage("Electrolyser plant", "Electrochemical reactor plus\ndynamic chemical process"),
+        ],
+        footnote="The levers that remain are current-density intensification, power "
+                 "electronics integration, and standardising the water treatment interface — "
+                 "not assembly-line volume alone.",
+        sequential=False,
+    ),
+    "pilot projects to commercial": Diagram(
+        title="What changes between a megawatt pilot and a gigawatt plant",
+        caption="The binding constraint moves off the stack.",
+        stages=[
+            Stage("Megawatt pilot", "Cell chemistry and stack\nefficiency dominate attention"),
+            Stage("Water treatment", "High-recovery duty\nFeedstock at stack purity"),
+            Stage("Thermal rejection", "Heat grows with capacity\nAmbient-limited"),
+            Stage("Power conditioning", "Dynamic conversion\nRipple and ramp control"),
+        ],
+        footnote="Announced pipelines convert into operable assets on balance-of-plant "
+                 "engineering, which is where utility-scale schedules are won or lost.",
+    ),
 }
 
 
@@ -290,6 +566,7 @@ def diagram_for(title: str) -> Optional[Diagram]:
 
 
 def render_for_title(title: str, out_path: str) -> Optional[str]:
+    """Render the diagram matching `title` to `out_path`, or None if none match."""
     diagram = diagram_for(title)
     if diagram is None:
         return None

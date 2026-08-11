@@ -5,6 +5,19 @@
 #     "python-dotenv"
 # ]
 # ///
+"""Generate and publish one technical article, end to end.
+
+Picks an uncovered topic, drafts it with a model, repairs the known HTML
+defects, attaches a figure — a rendered diagram where the subject has one, a
+licensed photograph otherwise — and gates the whole thing on qc_check before
+anything reaches the site. A post that fails a blocker is held as a draft
+rather than published.
+
+Run by .github/workflows/publish_article.yml; also runnable by hand.
+"""
+import datetime
+import hashlib
+import io
 import os
 import requests
 import random
@@ -12,8 +25,11 @@ import re
 import urllib.parse
 from dotenv import load_dotenv
 
+import diagrams
+import image_sourcing
 import qc_check
 import resilient
+from token_cache import get_cache
 
 load_dotenv()
 
@@ -70,6 +86,7 @@ TOPICS = {
         "categories": [8, 12],
     },
     "Alkaline vs PEM Electrolysis: Scaling for Gigawatt Green Hydrogen Projects": {
+        "image_query": "electrolysis plant",
         "image_prompt": (
             "large scale industrial alkaline electrolyzer plant interior, "
             "tall cylindrical bipolar electrolytic cells KOH solution, "
@@ -80,6 +97,7 @@ TOPICS = {
         "categories": [8, 10, 12],
     },
     "Ultrapure Water Demand and Reverse Osmosis (RO) Optimization in Hydrogen Hubs": {
+        "image_query": "reverse osmosis plant",
         "image_prompt": (
             "industrial reverse osmosis water treatment skid for green hydrogen plant, "
             "rows of white cylindrical RO pressure vessels with blue end caps, "
@@ -183,6 +201,7 @@ TOPICS = {
         "categories": [8, 9, 12],
     },
     "Seawater Desalination Integration for Coastal Green Hydrogen Projects": {
+        "image_query": "seawater desalination plant",
         "image_prompt": (
             "coastal seawater desalination plant feeding green hydrogen facility, reverse osmosis "
             "trains, seawater intake structures, ocean in background with wind turbines, "
@@ -215,6 +234,7 @@ TOPICS = {
         "categories": [9, 12],
     },
     "Waste Heat Recovery from Electrolyzers for District Heating and Process Use": {
+        "image_query": "heat exchanger",
         "image_prompt": (
             "industrial waste heat recovery system with plate heat exchangers and insulated hot "
             "water piping connecting electrolyzer plant to district heating network, pumps and "
@@ -247,6 +267,7 @@ TOPICS = {
         "categories": [8, 12],
     },
     "Hydrogen Storage Options Compared: Compressed Gas, Liquid and Metal Hydrides": {
+        "image_query": "hydrogen storage tank",
         "image_prompt": (
             "hydrogen storage comparison scene, high-pressure composite cylinders, cryogenic "
             "liquid hydrogen tank, metal hydride storage modules, industrial gas facility, "
@@ -271,6 +292,7 @@ TOPICS = {
         "categories": [10, 12],
     },
     "Membrane Technologies in Water Treatment: UF, RO and EDI Train Design for Hydrogen Plants": {
+        "image_query": "water treatment plant",
         "image_prompt": (
             "complete membrane water treatment train, ultrafiltration modules, reverse osmosis "
             "pressure vessels, EDI stacks in series, stainless steel piping and instrumentation, "
@@ -354,6 +376,7 @@ def sanitize_content(html: str) -> str:
 
     # 2. Fix broken CSS property names (missing hyphens) inside inline style attributes
     def _fix_inline_style(m):
+        """Rewrite one style="..." attribute with hyphenated property names."""
         style_val = m.group(1)
         for broken, fixed in _CSS_FIXES.items():
             style_val = re.sub(r"\b" + re.escape(broken) + r"\b", fixed, style_val, flags=re.IGNORECASE)
@@ -376,8 +399,134 @@ def sanitize_content(html: str) -> str:
     return html.strip()
 
 
+def choose_featured_image(topic: str) -> dict | None:
+    """Pick the featured image for `topic`, best source first.
+
+    The order matters and is the whole point of this function:
+
+      1. A rendered diagram, when diagrams.py defines one for the topic. For a
+         schematic subject (EDI trains, balance-of-plant, stack cutaways) a
+         drawn diagram is simply correct, and no photograph competes with it.
+      2. A real, correctly-licensed photograph from Wikimedia/Openverse/Pexels
+         via image_sourcing, which refuses anything it cannot tie back to the
+         topic.
+      3. Only then Pollinations FLUX.
+
+    Steps 1 and 2 existed as modules but nothing on the publish path called
+    them, so every new article still shipped a generated image — which is how
+    "mixed-bed ion exchange" ended up illustrated with a photograph of a bed.
+    Generation stays as the last resort rather than being deleted, because no
+    image at all trips the QC image rule and parks a finished article as a
+    draft.
+
+    Returns an upload kwargs dict, or None when every source failed.
+    """
+    dg = diagrams.diagram_for(topic)
+    if dg is not None:
+        print(f"Image: rendering diagram '{dg.title}'", flush=True)
+        try:
+            buf = io.BytesIO()
+            diagrams.render(dg).save(buf, "PNG", optimize=True)
+            return {
+                "image_bytes": buf.getvalue(),
+                "mime": "image/png",
+                "filename": f"{_slugify(dg.title)}.png",
+                "alt": dg.title,
+                "caption": dg.caption,
+            }
+        except Exception as exc:
+            print(f"    diagram render failed ({exc}) — falling through.", flush=True)
+
+    hit = None
+    for subject in _image_search_subjects(topic):
+        try:
+            # Search on the short subject but keep the full topic in the
+            # relevance haystack, so the gate still judges against the article.
+            hit = image_sourcing.find_image(subject, topic)
+        except Exception as exc:
+            print(f"    image_sourcing failed on {subject!r} ({exc})", flush=True)
+            continue
+        if hit is not None:
+            break
+
+    if hit is not None:
+        print(f"Image: sourced photo from {hit.source} ({hit.licence})", flush=True)
+        res = resilient.request_with_retry(
+            "GET",
+            hit.url,
+            attempts=2,
+            label="image_sourcing/fetch",
+            headers={"User-Agent": image_sourcing.USER_AGENT},
+            timeout=90,
+        )
+        if res is not None and res.status_code == 200 and len(res.content) >= MIN_IMAGE_BYTES:
+            is_png = hit.url.lower().endswith(".png")
+            return {
+                "image_bytes": res.content,
+                "mime": "image/png" if is_png else "image/jpeg",
+                "filename": f"{_slugify(topic)}.{'png' if is_png else 'jpg'}",
+                # Commons titles are filenames; "... 2020 01.jpg" is not alt text.
+                "alt": re.sub(r"\.(jpe?g|png|webp)$", "", hit.title, flags=re.I).strip()
+                       or topic,
+                # Credit rides on the attachment; CC BY / BY-SA require it.
+                "caption": (
+                    re.sub(r"<[^>]+>", "", hit.attribution_html())
+                    if hit.needs_credit else ""
+                ),
+            }
+        print("    sourced photo could not be fetched — falling through.", flush=True)
+
+    image_bytes = fetch_contextual_image(topic)
+    if image_bytes is None:
+        return None
+    print("Image: fell back to generated image.", flush=True)
+    return {"image_bytes": image_bytes, "mime": "image/jpeg", "alt": topic}
+
+
+def _slugify(text: str, limit: int = 48) -> str:
+    """Lowercase hyphenated slug for an upload filename, capped at `limit`."""
+    s = re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
+    return s[:limit].rstrip("-") or "featured"
+
+
+def _image_search_subjects(topic: str):
+    """Short photo-search subjects for `topic`, most specific first.
+
+    Commons full-text search takes the terms as a conjunction, so handing it a
+    whole article title matches almost nothing that is a photograph: the query
+    "Compressor Technologies for High-Pressure Green Hydrogen Storage" returns
+    twelve results and every one is a PDF of a research paper. Two- and
+    three-word subjects ("hydrogen compressor", "reverse osmosis plant") return
+    real plant photography from the same endpoint.
+
+    Deliberately explicit-only: subjects are curated per topic, never derived
+    from the title. Deriving them was tried and is unsafe — the leading
+    keywords of a title make a query loose enough that the 1-token relevance
+    gate lets absurd results through. Measured on the real topic list, derived
+    subjects returned a monitor *lizard* for "Water Quality Monitoring", a
+    marine foraminifera ("Ammonia beccarii") for "Green Ammonia", and spray
+    helicopters for "Control Valve Selection". That is the bedroom failure
+    wearing a different hat, and a wrong photograph is worse than none.
+
+    A topic with no `image_query` simply has no photo tier: it falls through
+    to a diagram, and then to generation.
+    """
+    seen = set()
+    explicit = (TOPICS.get(topic) or {}).get("image_query")
+    candidates = list(explicit) if isinstance(explicit, (list, tuple)) else \
+        ([explicit] if explicit else [])
+
+    for c in candidates:
+        c = (c or "").strip()
+        if c and c.lower() not in seen:
+            seen.add(c.lower())
+            yield c
+
+
 def fetch_contextual_image(topic: str) -> bytes | None:
     """Generate a topic-specific, photorealistic image via Pollinations FLUX.
+
+    Last-resort source only — see choose_featured_image for the ordering.
 
     Tried IMAGE_ATTEMPTS times with backoff. A single HTTP 500 here used to be
     enough to lose an entire publish slot: no image trips the QC image rule,
@@ -470,11 +619,26 @@ def inject_adsense_unit(html: str) -> str:
     return html[: target.start()] + unit + html[target.start() :]
 
 
-def upload_image_to_wp(image_bytes: bytes, topic: str) -> int | None:
-    """Upload image bytes to WordPress Media Library with alt text, return media ID."""
-    filename = f"featured_{random.randint(1000, 9999)}.jpg"
+def upload_image_to_wp(
+    image_bytes: bytes,
+    topic: str,
+    *,
+    mime: str = "image/jpeg",
+    filename: str | None = None,
+    alt: str | None = None,
+    caption: str = "",
+) -> int | None:
+    """Upload image bytes to WordPress Media Library with alt text, return media ID.
+
+    `caption` carries licence credit for CC BY / CC BY-SA photographs. It is
+    stored on the attachment rather than in the post body so a later rewrite
+    of the article cannot silently drop the credit and put us in breach.
+    """
+    if filename is None:
+        ext = "png" if mime.endswith("png") else "jpg"
+        filename = f"featured_{random.randint(1000, 9999)}.{ext}"
     media_headers = {
-        "Content-Type": "image/jpeg",
+        "Content-Type": mime,
         "Content-Disposition": f'attachment; filename="{filename}"',
     }
     # Retried for the same reason the generation call is: a failed upload
@@ -505,7 +669,11 @@ def upload_image_to_wp(image_bytes: bytes, topic: str) -> int | None:
         attempts=3,
         label="wp/media-alt",
         auth=auth,
-        json={"alt_text": topic, "title": topic},
+        json={
+            "alt_text": alt or topic,
+            "title": alt or topic,
+            **({"caption": caption} if caption else {}),
+        },
         timeout=30,
     )
     if alt_res is None or alt_res.status_code != 200:
@@ -516,6 +684,7 @@ def upload_image_to_wp(image_bytes: bytes, topic: str) -> int | None:
 
 
 def _normalize_title(t: str) -> str:
+    """Title reduced to bare alphanumerics, for comparing two titles."""
     return re.sub(r"[^a-z0-9]+", "", t.lower())
 
 
@@ -575,6 +744,7 @@ def make_excerpt(html: str) -> str:
 
 
 def build_gemini_prompt(topic: str) -> str:
+    """The full drafting prompt for one topic, formatting rules included."""
     return f"""You are Arun, the Chief Engineer at Avoltium.
 Write a highly technical, professional 1,200-word engineering article on: "{topic}".
 
@@ -621,27 +791,63 @@ Write a highly technical, professional 1,200-word engineering article on: "{topi
 # ─── Main ────────────────────────────────────────────────────────────────────
 
 def main() -> None:
+    """Generate one article and publish it, or hold it as a draft if QC fails."""
     topic, post_title = pick_topic()
     print(f"Selected topic: {topic}", flush=True)
     if post_title != topic:
         print(f"All topics covered — publishing dated review: {post_title}", flush=True)
 
-    # 1. Generate the article first. Text generation is the step most likely to
-    #    fail outright, and it is the only one with nothing to undo — running it
-    #    before the image upload means a dead Gemini chain no longer strands an
-    #    orphaned image in the WordPress media library.
-    print("Generating article via Gemini...", flush=True)
-    html_content, model_used = resilient.generate_text(
-        GEMINI_API_KEY,
-        build_gemini_prompt(topic),
-        timeout=90,
-        omniroute_base_url=OMNIROUTE_BASE_URL or None,
-        omniroute_api_key=OMNIROUTE_API_KEY or None,
-    )
-    if not html_content:
-        print("ERROR: Could not generate content from any Gemini model.", flush=True)
-        exit(1)
-    print(f"Article generated with model {model_used}.", flush=True)
+    # 1. Check cache first before generating
+    cache = get_cache()
+    # The prompt is part of what produced the cached body, so it has to be
+    # part of the key. Without it, editing build_gemini_prompt changes nothing
+    # for 90 days on every topic already in the cache -- the old article comes
+    # back and the new rules are never applied. Hashing the prompt text means
+    # the key moves whenever the prompt does, with nothing to remember to bump.
+    cache_params = {
+        "style": "technical",
+        "length": "1200",
+        "prompt": hashlib.sha256(build_gemini_prompt("").encode()).hexdigest()[:16],
+    }
+    cached_content = cache.get_cached_content(topic, cache_params)
+    # One bounded DELETE per run. Nothing else ever calls this, so without it
+    # every superseded article body stays in the file forever.
+    cache.clear_expired()
+
+    html_content = None
+    model_used = "cached"
+
+    if cached_content:
+        print("✓ Found cached article — skipping generation", flush=True)
+        html_content = cached_content
+        cache.log_api_call("gemini_cache_hit", tokens_used=0, cached=True)
+    else:
+        # Generate the article. Text generation is the step most likely to
+        # fail outright, and it is the only one with nothing to undo — running it
+        # before the image upload means a dead Gemini chain no longer strands an
+        # orphaned image in the WordPress media library.
+        print("Generating article via Gemini...", flush=True)
+        html_content, model_used = resilient.generate_text(
+            GEMINI_API_KEY,
+            build_gemini_prompt(topic),
+            timeout=90,
+            omniroute_base_url=OMNIROUTE_BASE_URL or None,
+            omniroute_api_key=OMNIROUTE_API_KEY or None,
+        )
+        if not html_content:
+            print("ERROR: Could not generate content from any Gemini model.", flush=True)
+            exit(1)
+        print(f"Article generated with model {model_used}.", flush=True)
+
+        # Cache the generated content (estimate: 1200 words ≈ 1200 tokens)
+        cache.cache_content(
+            topic=topic,
+            content=html_content,
+            params=cache_params,
+            tokens_saved=1200,
+            ttl_days=90
+        )
+        cache.log_api_call("gemini", tokens_used=1200, cost_usd=0.024)
 
     # 2. Sanitize: remove CSS injection, fix broken property names, strip LaTeX
     html_content = sanitize_content(html_content)
@@ -662,9 +868,9 @@ def main() -> None:
 
     # 4. Featured image, now that there is an article to attach it to
     featured_media_id = None
-    image_bytes = fetch_contextual_image(topic)
-    if image_bytes:
-        featured_media_id = upload_image_to_wp(image_bytes, topic)
+    picked = choose_featured_image(topic)
+    if picked:
+        featured_media_id = upload_image_to_wp(picked.pop("image_bytes"), topic, **picked)
     else:
         print("Skipping featured image — will publish without one.", flush=True)
 
@@ -698,6 +904,27 @@ def main() -> None:
     #    stripped tags, and inline script text would count toward the
     #    thin-content threshold and mask a genuinely short article.
     html_content = inject_adsense_unit(html_content)
+
+    # 6b. Provenance block — byline, last-updated, AI disclosure and further
+    #     reading. Added here so a new article ships with it rather than
+    #     waiting for editorial_provenance.py to sweep the site afterwards.
+    #     Note what this is not: it carries *further reading*, not citations.
+    #     Nothing in the pipeline records which document a given sentence came
+    #     from, so nothing here may be presented as evidence for one. Adding
+    #     per-claim sources means writing the article from recorded sources in
+    #     the first place — see editorial_standards.md §8.
+    try:
+        import editorial_provenance
+        html_content += "\n" + editorial_provenance.build_block(
+            title=post_title,
+            reviewer=editorial_provenance.DEFAULT_REVIEWER,
+            role=editorial_provenance.DEFAULT_ROLE,
+            reviewed=datetime.date.today().strftime("%d %B %Y"),
+        )
+        print("Provenance block added.", flush=True)
+    except Exception as exc:
+        # A missing byline is not worth losing a finished article over.
+        print(f"WARNING: provenance block not added ({exc}).", flush=True)
 
     # 7. Publish to WordPress with topic-specific categories and SEO excerpt
     categories = (TOPICS.get(topic) or {}).get("categories", [12])

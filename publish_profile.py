@@ -114,6 +114,7 @@ CSS = """
 
 
 def build_html(include_phone: bool = False) -> str:
+    """The profile page markup. The phone number is opt-in."""
     contact = f'<a href="mailto:{EMAIL}">{EMAIL}</a>'
     if include_phone:
         contact += f' &nbsp;·&nbsp; <a href="tel:{PHONE.replace("-", "")}">{PHONE}</a>'
@@ -235,22 +236,42 @@ def build_html(include_phone: bool = False) -> str:
 
 
 def session() -> requests.Session:
+    """A requests session carrying the WordPress application-password auth."""
     s = requests.Session()
     s.auth = (WP_USERNAME, WP_APP_PASSWORD)
     s.headers.update({"User-Agent": "avoltium-profile/1.0"})
     return s
 
 
+class LookupFailed(RuntimeError):
+    """The lookup itself failed, which is not the same as finding nothing."""
+
+
 def find_page(s: requests.Session, slug: str):
-    r = s.get(PAGES_READ, params={"slug": slug, "status": "publish,draft"}, timeout=30)
-    if r.status_code != 200:
-        logger.error("Lookup of /%s failed: HTTP %s", slug, r.status_code)
-        return None
-    items = r.json()
+    """The existing page with this slug, or None if there is none.
+
+    Raises LookupFailed when the request errors. Returning None for both
+    outcomes meant a transient 500 read as "no such page", and the caller
+    published a second page on a slug that already had one.
+    """
+    try:
+        r = s.get(PAGES_READ, params={"slug": slug, "status": "publish,draft"}, timeout=30)
+        if r.status_code != 200:
+            raise LookupFailed(f"/{slug}: HTTP {r.status_code}")
+        items = r.json()
+    except requests.RequestException as exc:
+        # A timeout or a dropped connection is a failed lookup, not an absent
+        # page, and it must reach main as one rather than as a traceback.
+        raise LookupFailed(f"/{slug}: {type(exc).__name__}: {exc}") from exc
+    except ValueError as exc:
+        raise LookupFailed(f"/{slug}: response was not JSON ({exc})") from exc
+    if not isinstance(items, list):
+        raise LookupFailed(f"/{slug}: expected a list, got {type(items).__name__}")
     return items[0] if items else None
 
 
 def main() -> int:
+    """Publish the profile page. Dry run by default; writes the HTML to --out."""
     ap = argparse.ArgumentParser()
     ap.add_argument("--execute", action="store_true")
     ap.add_argument("--slug", default=SLUG)
@@ -291,7 +312,14 @@ def main() -> int:
                          args.delete_page, r.status_code, r.text[:200])
             return 1
 
-    existing = find_page(s, args.slug)
+    try:
+        existing = find_page(s, args.slug)
+    except LookupFailed as exc:
+        # Guessing "no page" here would publish a duplicate on a slug that
+        # already has one, and WordPress would silently serve it as
+        # /slug-2/ -- two pages competing for the same search result.
+        logger.error("Could not check whether /%s already exists: %s", args.slug, exc)
+        return 1
     payload = {"title": TITLE, "content": body, "status": "publish", "slug": args.slug}
     if existing:
         logger.info("Updating existing page id=%s", existing["id"])

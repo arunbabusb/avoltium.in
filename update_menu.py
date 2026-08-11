@@ -63,6 +63,7 @@ CALCULATORS = [
 
 
 def session() -> requests.Session:
+    """A requests session carrying the WordPress application-password auth."""
     s = requests.Session()
     s.auth = (WP_USERNAME, WP_APP_PASSWORD)
     s.headers.update({"User-Agent": "avoltium-menu/1.0"})
@@ -70,8 +71,11 @@ def session() -> requests.Session:
 
 
 def plain(t) -> str:
+    """A rendered-or-raw REST title field as plain text."""
     if isinstance(t, dict):
-        t = t.get("rendered", "")
+        # context=edit returns raw with no rendered key; reading only rendered
+        # turned every title into an empty string.
+        t = t.get("rendered") or t.get("raw", "")
     return html.unescape(re.sub(r"<[^>]+>", "", t or "")).strip()
 
 
@@ -96,6 +100,7 @@ def find_existing(items, page, slug, label):
 
 
 def get_json(s, url, **params):
+    """GET and parse JSON, logging and returning None on any non-200."""
     r = s.get(url, params=params or None, timeout=45)
     if r.status_code != 200:
         logger.error("GET %s -> HTTP %s %s", url, r.status_code, r.text[:160])
@@ -104,6 +109,7 @@ def get_json(s, url, **params):
 
 
 def main() -> int:
+    """Rebuild the site menu from the pages that exist. Dry run by default."""
     ap = argparse.ArgumentParser()
     ap.add_argument("--execute", action="store_true")
     ap.add_argument("--menu-id", type=int, default=0,
@@ -134,12 +140,21 @@ def main() -> int:
         # called on this theme.
         counts = {}
         for m in menus:
-            items = get_json(s, f"{READ}/menu-items", menus=m["id"], per_page=100) or []
+            items = get_json(s, f"{READ}/menu-items", menus=m["id"], per_page=100)
+            if items is None:
+                logger.error("Could not read items for menu %s", m["id"])
+                return 1
             counts[m["id"]] = len(items)
         menu_id = max(counts, key=counts.get)
         logger.info("auto-selected menu id=%s (%d items)", menu_id, counts[menu_id])
 
-    items = get_json(s, f"{READ}/menu-items", menus=menu_id, per_page=100) or []
+    items = get_json(s, f"{READ}/menu-items", menus=menu_id, per_page=100)
+    if items is None:
+        # An empty by_title makes every wanted entry look absent, and the run
+        # then adds a second copy of the entire menu.
+        logger.error("Could not read the items of menu %s; refusing to plan "
+                     "against an unknown menu", menu_id)
+        return 1
     by_title = {plain(i.get("title")).lower(): i for i in items}
     logger.info("menu has %d items", len(items))
 

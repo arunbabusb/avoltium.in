@@ -76,6 +76,11 @@ _CSS_FIXES = {
 
 
 def fix_content(html: str) -> str:
+    """Repair the HTML defects the generator is known to emit.
+
+    Strips injected <style> blocks, restores de-hyphenated CSS property names,
+    and fixes internal links that lost their hyphens.
+    """
     original_len = len(html)
 
     # 1. Strip injected <style> blocks
@@ -83,6 +88,7 @@ def fix_content(html: str) -> str:
 
     # 2. Fix broken inline CSS property names
     def _fix_style(m):
+        """Rewrite one style="..." attribute with hyphenated property names."""
         val = m.group(1)
         for broken, fixed in _CSS_FIXES.items():
             val = re.sub(r"\b" + re.escape(broken) + r"\b", fixed, val, flags=re.IGNORECASE)
@@ -128,6 +134,7 @@ def fetch_raw_content(post_id: int) -> tuple[str, str] | None:
 
 
 def patch_post(post_id: int, fixed_content: str) -> bool:
+    """Write repaired content back to a post. True when WordPress accepted it."""
     res = requests.post(
         f"{WP_URL}/wp-json/wp/v2/posts/{post_id}",
         auth=auth,
