@@ -207,6 +207,35 @@ def existing_titles(limit: int = 200) -> list[str]:
     return out
 
 
+# Subscripts and superscripts, to the digits they stand for. WordPress keeps
+# them verbatim in a slug, so "Cu₃Pt" became the URL
+# .../strain-engineered-cu%e2%82%83pt-catalyst-... — unreadable, ugly when
+# pasted into a chat or a citation, and awkward for anything that has to
+# re-encode it. On a hydrogen site this is not an edge case: H₂, H₂O, CO₂ and
+# NH₃ all carry one and all turn up in headlines.
+_DIGIT_LOOKALIKES = str.maketrans({
+    "₀": "0", "₁": "1", "₂": "2", "₃": "3", "₄": "4",
+    "₅": "5", "₆": "6", "₇": "7", "₈": "8", "₉": "9",
+    "⁰": "0", "¹": "1", "²": "2", "³": "3", "⁴": "4",
+    "⁵": "5", "⁶": "6", "⁷": "7", "⁸": "8", "⁹": "9",
+    "–": "-", "—": "-", "’": "", "‘": "", "“": "", "”": "",
+})
+
+
+def url_slug(title: str) -> str:
+    """An ASCII slug for a headline, with formulae kept readable.
+
+    The title itself is left alone — "Cu₃Pt" is correct in a headline and
+    should stay. Only the URL is flattened.
+    """
+    s = title.translate(_DIGIT_LOOKALIKES).lower()
+    s = re.sub(r"[^a-z0-9]+", "-", s).strip("-")
+    # WordPress truncates around 200; keep it well short and end on a word.
+    if len(s) > 90:
+        s = s[:90].rsplit("-", 1)[0]
+    return s
+
+
 def sources_block(item: news_sources.NewsItem) -> str:
     """The whole point: the story this was written from, named and linked."""
     return (
@@ -337,6 +366,7 @@ def main() -> int:
 
         r = requests.post(POSTS, auth=AUTH, timeout=90, json={
             "title": item.title,
+            "slug": url_slug(item.title),
             "content": body,
             "status": status,
             "categories": [NEWS_CATEGORY],
