@@ -28,7 +28,13 @@ import requests
 # just burns the schedule window.
 RETRYABLE_STATUS = frozenset({408, 429, 500, 502, 503, 504})
 
-DEFAULT_GEMINI_MODELS = ["gemini-2.0-flash", "gemini-flash-latest", "gemini-2.0-flash-lite"]
+# Ordered by what actually answered. gemini-flash-latest is the one that
+# produced every article in the 2026-08-11 run; gemini-2.0-flash failed
+# instantly and non-retryably on all three, which is the signature of a model
+# name the endpoint does not serve rather than a busy one. It stays in the
+# chain as a fallback but no longer costs a wasted call in front of the model
+# that works.
+DEFAULT_GEMINI_MODELS = ["gemini-flash-latest", "gemini-2.0-flash", "gemini-2.0-flash-lite"]
 
 
 def sleep_backoff(attempt: int, base: float = 2.0, cap: float = 30.0) -> None:
@@ -108,7 +114,13 @@ def gemini_generate(
         )
 
         if res is None or res.status_code != 200:
-            print(f"  {model} exhausted — falling through to next model.", flush=True)
+            # The status matters and used to be dropped. A 503 is Google being
+            # busy and the retries were worth it; a 404 is a model that does
+            # not exist, where every call is wasted and the name needs
+            # changing. Both printed the same line, so a dead model in the
+            # chain was indistinguishable from a bad afternoon.
+            why = "no response" if res is None else f"HTTP {res.status_code}"
+            print(f"  {model} exhausted ({why}) — falling through to next model.", flush=True)
             continue
 
         try:
@@ -118,6 +130,15 @@ def gemini_generate(
             print(f"  {model}: unusable response shape — trying next model.", flush=True)
 
     return None, None
+
+
+class GatewayUnreachable(Exception):
+    """The OmniRoute gateway never answered — no response, not a refusal.
+
+    Distinct from an exhausted chain, which means the gateway answered and
+    every model failed. That is worth retrying on the next article; a gateway
+    that is not listening is not.
+    """
 
 
 def omniroute_generate(
@@ -150,7 +171,13 @@ def omniroute_generate(
         )
 
         if res is None or res.status_code != 200:
-            print(f"  {model} exhausted — falling through to next model.", flush=True)
+            why = "no response" if res is None else f"HTTP {res.status_code}"
+            print(f"  {model} exhausted ({why}) — falling through to next model.", flush=True)
+            # A gateway that never answered will not answer for the next model
+            # either. Nine connection refusals per article, one for every
+            # model-and-retry, is forty seconds of nothing.
+            if res is None:
+                raise GatewayUnreachable(url)
             continue
 
         try:
@@ -160,6 +187,14 @@ def omniroute_generate(
             print(f"  {model}: unusable response shape — trying next model.", flush=True)
 
     return None, None
+
+
+# Set once a run has established that the gateway is not answering at all.
+# OMNIROUTE_BASE_URL was pointing at localhost:20128, which exists on a
+# developer's machine and never on a GitHub runner, so every article paid nine
+# connection refusals before falling back to Gemini and succeeding. The
+# fallback made it invisible in the output and merely slow.
+_omniroute_down = False
 
 
 def generate_text(
@@ -179,19 +214,36 @@ def generate_text(
     unconfigured run is unaffected. When both are set, OmniRoute is tried
     first (for its cost/token-compression routing) and a failed chain falls
     back to calling Gemini directly rather than failing the whole run.
+
+    A gateway that proves unreachable is not tried again for the rest of the
+    run. Retrying is right for a busy gateway and pointless for an absent one,
+    and the difference is visible after the first article.
     """
+    global _omniroute_down
+
+    if _omniroute_down:
+        return gemini_generate(api_key, prompt, models=models,
+                               attempts_per_model=attempts_per_model, timeout=timeout)
+
     if omniroute_base_url and omniroute_api_key:
-        text, model = omniroute_generate(
-            omniroute_api_key,
-            prompt,
-            base_url=omniroute_base_url,
-            models=models,
-            attempts_per_model=attempts_per_model,
-            timeout=timeout,
-        )
-        if text:
-            return text, model
-        print("  OmniRoute chain exhausted — falling back to direct Gemini API.", flush=True)
+        try:
+            text, model = omniroute_generate(
+                omniroute_api_key,
+                prompt,
+                base_url=omniroute_base_url,
+                models=models,
+                attempts_per_model=attempts_per_model,
+                timeout=timeout,
+            )
+        except GatewayUnreachable as exc:
+            _omniroute_down = True
+            print(f"  OmniRoute is unreachable at {exc}; using Gemini directly for "
+                  f"the rest of this run.", flush=True)
+        else:
+            if text:
+                return text, model
+            print("  OmniRoute chain exhausted — falling back to direct Gemini API.",
+                  flush=True)
 
     return gemini_generate(
         api_key, prompt, models=models, attempts_per_model=attempts_per_model, timeout=timeout
