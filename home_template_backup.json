@@ -1,0 +1,7 @@
+{
+  "id": 68,
+  "title": "Home",
+  "template": "page-pagebuilder-overlay.php",
+  "modified_gmt": "2026-08-11T16:23:12",
+  "note": "Template before the overlay-header fix. Restore by POSTing {'template': <this value>} to /wp/v2/pages/68."
+}
