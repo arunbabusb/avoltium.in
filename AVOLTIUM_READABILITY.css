@@ -64,10 +64,28 @@ html body .td-post-content li {
     display: block;
     overflow-x: auto;          /* a wide figure table must not widen the page */
 }
+/* Header cells: never repaint the background without also setting the text.
+   This rule used to be `background: #f1f5f9 !important` with no colour, and it
+   made every table header on the site unreadable. Articles emit their own
+   header row inline — <tr style="background-color:#0056b3; color:#fff"> — so
+   the white text kept inheriting from the row while the !important background
+   painted the cell near-white underneath it. White on #f1f5f9 is 1.1:1: the
+   AST protocol table on the electrolyzer degradation article had a header that
+   simply was not there.
+
+   So the cell background goes transparent and the pair of colours is set
+   together on the row. Neither declaration is !important, which lets an
+   article's inline header styling win — the blue header was always legible,
+   and there was no reason to override it — while a table that arrives with no
+   styling of its own still gets a readable one. */
 .td-post-content table th {
-    background: #f1f5f9 !important;
+    background: transparent !important;
     text-align: left !important;
     font-weight: 700 !important;
+}
+.td-post-content table thead tr {
+    background-color: #f1f5f9;
+    color: #0f172a;
 }
 .td-post-content table th,
 .td-post-content table td {
@@ -162,6 +180,24 @@ html body .td-post-content li {
     .td-post-content h2 { font-size: 1.35rem !important; margin-top: 1.7em !important; }
     .td-post-content h3 { font-size: 1.12rem !important; }
     .av-provenance { padding: 18px 16px; }
+
+    /* A four-column table on a 390px phone gives each column about 90px, which
+       wraps technical prose one or two words to the line and turns a three-row
+       table into a screenful. The table already scrolls (`overflow-x: auto`
+       above), but it never had anything to scroll: the cells wrapped down
+       instead of pushing the table wide, so the reader got the crushed columns
+       and none of the scrolling.
+
+       A minimum column width fixes both. Four columns at 132px exceed any
+       phone viewport, so the intrinsic width finally overflows the block and
+       the horizontal scroll engages — and because this stays one table rather
+       than a thead/tbody split, the header stays aligned over its column. */
+    .td-post-content table th,
+    .td-post-content table td {
+        min-width: 132px;
+        padding: 7px 9px !important;
+    }
+    .td-post-content table { font-size: 0.9rem !important; }
 }
 
 /* Respect a reader who has asked for less motion; nothing here animates, but

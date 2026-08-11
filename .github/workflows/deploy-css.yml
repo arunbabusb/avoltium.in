@@ -1,0 +1,34 @@
+name: Deploy readability CSS
+
+permissions:
+  contents: read
+
+# Manual only. It replaces the stylesheet every visitor loads.
+on:
+  workflow_dispatch:
+    inputs:
+      execute:
+        description: 'Actually deploy (false = dry run)'
+        type: boolean
+        required: true
+        default: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install --quiet requests
+      - name: Deploy
+        env:
+          WP_URL: ${{ secrets.WP_URL }}
+          WP_USERNAME: ${{ secrets.WP_USERNAME }}
+          WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
+        run: |
+          ARGS=()
+          [ "${{ inputs.execute }}" = "true" ] && ARGS+=(--execute)
+          python deploy_readability_css.py "${ARGS[@]}"
