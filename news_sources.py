@@ -17,6 +17,7 @@ silently at 3am.
 """
 from __future__ import annotations
 
+import html
 import re
 import urllib.request
 try:
@@ -53,14 +54,71 @@ GLOBAL_FEEDS = [
 
 # The site is about hydrogen production and the plant around it. A power-sector
 # feed carries plenty that is not, so items have to earn their place.
-RELEVANT = re.compile(
-    r"\b(hydrogen|h2|electroly[sz]|electrolyser|electrolyzer|fuel[- ]cell|"
-    r"ammonia|methanol|desalination|ultrapure|renewab|solar|wind|"
-    r"green\s+steel|power[- ]to[- ]x|offtake|gigafactory)\b", re.I)
+# This is a green hydrogen publication, so a story has to be about hydrogen.
+# The first version listed solar, wind and renewables as standalone
+# alternatives, which is not a filter at all on feeds that are mostly solar
+# trade press: a dry run picked "Philippines eases rules for own-use solar
+# systems" and two solar financing stories, three for three.
+CORE = re.compile(
+    r"\b(hydrogen|h2|electroly[sz]\w*|electrolyser|electrolyzer|fuel[- ]cell|"
+    r"ammonia|methanol|power[- ]to[- ]x|green\s+steel)\b", re.I)
+
+# Only count when CORE is present too. "Solar" earns a place in a hydrogen
+# story about solar-powered electrolysis; on its own it is somebody else's
+# beat.
+ADJACENT = re.compile(
+    r"\b(desalination|ultrapure|offtake|gigafactory|renewab\w*|solar|wind)\b", re.I)
+
+
+def is_relevant(title: str, summary: str = "") -> bool:
+    """Whether an item belongs on a green hydrogen site.
+
+    The hydrogen term has to be in the headline. Searching the summary as well
+    sounds more generous and is actually the bug: "Ethanol, EVs must coexist in
+    India's clean mobility transition" was selected for publication because its
+    summary listed "ethanol, electric vehicles, hybrids, CNG and hydrogen". One
+    mention among five fuels is not a hydrogen story, and an article written
+    around it would have had nothing to say.
+
+    Adjacent energy vocabulary rides along with a CORE term but never qualifies
+    a story by itself.
+    """
+    return bool(CORE.search(title))
+
+
+# Which country a story is about, which is not the same as which publication
+# ran it. Mercom India carried "European Energy Secures $78 Million for UK
+# Solar and Battery Projects", and taking the region from the feed filed a UK
+# story under India.
+INDIA_SIGNAL = re.compile(
+    r"\b(india|indian|bharat|modi|centre|niti\s*aayog|sebi|ongc|bpcl|iocl|ntpc|"
+    r"sail|gail|adani|reliance|jsw|greenko|acme|avaada|ohmium|"
+    r"andhra|assam|bihar|delhi|gujarat|haryana|karnataka|kerala|madhya|"
+    r"maharashtra|odisha|punjab|rajasthan|tamil\s*nadu|telangana|"
+    r"uttar|bengal|ladakh|kandla|paradip|kochi|tuticorin|"
+    r"crore|lakh|rupee|\u20b9)\b", re.I)
+
+
+def region_of(text: str) -> str:
+    """"india" or "global", decided by the story rather than the publisher.
+
+    No fallback to the feed's own region. Letting an India-specific feed claim
+    its unsignalled items is what filed "European Energy Secures $78 Million
+    for UK Solar and Battery Projects" under India in the first place.
+    """
+    return "india" if INDIA_SIGNAL.search(text) else "global"
 
 # Wire copy that is not a story about the sector.
+# Investment commentary keeps arriving on the hydrogen feeds — a dry run
+# picked "Prediction: You Won't Recognize Plug Power in 2028. Should You Buy
+# the Stock?" from a syndicated stock-tip column. Plug Power is a hydrogen
+# company, so the topic filter passes it; this is what says no. An
+# engineering publication does not tell readers which shares to buy.
 NOISE = re.compile(r"\b(webinar|podcast|subscribe|newsletter|photo of the day|"
-                   r"jobs?|appointment|obituary|share price|stocks? to watch)\b", re.I)
+                   r"jobs?|appointment|obituary|share price|stocks? to watch|"
+                   r"should you buy|buy the stock|stock to buy|best stocks?|"
+                   r"price target|analyst rating|upgraded to|downgraded to|"
+                   r"motley fool|zacks|q[1-4] earnings|earnings call)\b", re.I)
 
 
 @dataclass
@@ -79,10 +137,16 @@ class NewsItem:
 
 
 def _text(el, *names) -> str:
-    """The first non-empty child element among `names`, tags stripped."""
+    """The first non-empty child element among `names`, as plain text.
+
+    Unescaped twice on purpose. Feeds routinely double-escape, so a headline
+    arrives as "India&amp;#039;s" and one pass leaves "India&#039;s" — which
+    is what would then be published, entity and all.
+    """
     for n in names:
         v = el.findtext(n)
         if v:
+            v = html.unescape(html.unescape(v))
             return re.sub(r"<[^>]+>", "", v).strip()
     return ""
 
@@ -109,7 +173,7 @@ def _parse_date(raw: str) -> datetime | None:
         return None
 
 
-def fetch_feed(name: str, url: str, region: str) -> List[NewsItem]:
+def fetch_feed(name: str, url: str) -> List[NewsItem]:
     """Parse one RSS feed into items. Returns [] rather than raising."""
     try:
         req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
@@ -135,45 +199,98 @@ def fetch_feed(name: str, url: str, region: str) -> List[NewsItem]:
         if published is None:
             # Unknown age is not the same as fresh; drop it rather than guess.
             continue
+        summary = _text(it, "description")[:600]
         out.append(NewsItem(
             title=title, link=link, publisher=publisher,
             published=published,
-            summary=_text(it, "description")[:600],
-            region=region,
+            summary=summary,
+            region=region_of(f"{title} {summary}"),
         ))
     return out
 
 
 def _norm(t: str) -> str:
-    """Title reduced to bare alphanumerics, truncated — the de-duplication key."""
+    """Title reduced to bare alphanumerics, truncated — an exact-match key."""
     return re.sub(r"[^a-z0-9]+", "", t.lower())[:60]
+
+
+# Words that carry no story identity, so two headlines about the same event
+# are not judged similar merely for sharing them.
+_DUP_STOP = frozenset("""
+a an and are as at be by for from has have in is it its of on or that the to
+with new news says said after over into up out first
+""".split())
+
+
+def _sig(t: str) -> frozenset:
+    """The significant words of a headline, for comparing two stories."""
+    return frozenset(w for w in re.findall(r"[a-z0-9]+", t.lower())
+                     if len(w) > 2 and w not in _DUP_STOP)
+
+
+# Two wires filing the same announcement do not write the same headline.
+# "Centre awards 30 KTPA green hydrogen capacity to four oil refineries" and
+# "...to four refineries" differ by one word, so an exact key kept both and a
+# dry run selected the same government announcement twice out of three slots.
+# Overlap, not equality, is what identifies a duplicate.
+DUP_OVERLAP = 0.7
+
+# Ratio alone is not enough on short headlines. "Adani commissions 5 GW
+# electrolyser factory" and "Reliance commissions 5 GW electrolyser factory"
+# share three words of four and score 0.75, but they are two companies and two
+# stories. Below this many shared words a headline is too small to be judged
+# by overlap, and only the exact key applies.
+DUP_MIN_SHARED = 5
+
+
+def _is_duplicate(sig: frozenset, kept: list) -> bool:
+    """Whether this headline restates one already kept.
+
+    Containment rather than Jaccard: a wire that adds detail produces a
+    superset, and "A to four oil refineries" should still match the shorter
+    "A to four refineries" even though the union has grown.
+    """
+    if len(sig) < DUP_MIN_SHARED:
+        return False
+    for other in kept:
+        if len(other) < DUP_MIN_SHARED:
+            continue
+        shared = len(sig & other)
+        if shared >= DUP_MIN_SHARED and shared / min(len(sig), len(other)) >= DUP_OVERLAP:
+            return True
+    return False
 
 
 def collect(max_age_hours: int = 36) -> tuple[List[NewsItem], List[NewsItem], int]:
     """Fresh, on-topic, de-duplicated items. Returns (india, global, feeds_ok)."""
     india, world, ok = [], [], 0
-    for region, feeds, bucket in (("india", INDIA_FEEDS, india),
-                                  ("global", GLOBAL_FEEDS, world)):
-        for name, url in feeds:
-            items = fetch_feed(name, url, region)
-            if items:
-                ok += 1
-            bucket.extend(items)
+    for name, url in INDIA_FEEDS + GLOBAL_FEEDS:
+        items = fetch_feed(name, url)
+        if items:
+            ok += 1
+        # File by what the story is about, not by who published it. The two
+        # feed lists decide what gets fetched, nothing more.
+        for item in items:
+            (india if item.region == "india" else world).append(item)
 
     def clean(items: List[NewsItem]) -> List[NewsItem]:
         """Drop stale, off-topic and duplicate items, newest first."""
-        seen, out = set(), []
+        seen, sigs, out = set(), [], []
         for i in sorted(items, key=lambda x: x.published, reverse=True):
             if i.age_hours() > max_age_hours:
                 continue
-            if not RELEVANT.search(f"{i.title} {i.summary}"):
+            if not is_relevant(i.title, i.summary):
                 continue
             if NOISE.search(i.title):
                 continue
             k = _norm(i.title)
             if k in seen:
                 continue
+            sig = _sig(i.title)
+            if _is_duplicate(sig, sigs):
+                continue
             seen.add(k)
+            sigs.append(sig)
             out.append(i)
         return out
 
