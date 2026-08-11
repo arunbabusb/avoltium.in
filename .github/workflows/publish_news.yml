@@ -42,6 +42,13 @@ jobs:
       - name: Install dependencies
         run: pip install requests pillow python-dotenv
 
+      # Selection decides what gets published under the site's name, so it is
+      # checked before the run rather than after. Offline assertions only —
+      # the live feed checks need the network to be having a good day and a
+      # flaky wire service must not block the morning's publish.
+      - name: Sanity-check the selection rules before publishing
+        run: python3 test_news_sources.py
+
       - name: Show what the feeds are offering
         run: python news_sources.py
 
