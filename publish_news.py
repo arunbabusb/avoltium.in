@@ -179,9 +179,18 @@ def attach_image(item) -> dict | None:
         return {"id": mid, "alt_text": alt}
 
 
-def existing_titles(limit: int = 200) -> set[str]:
-    """Normalised titles already on the site, for skipping stories we ran."""
-    out, page = set(), 1
+def existing_titles(limit: int = 200) -> list[str]:
+    """Titles already on the site, for skipping stories we have run.
+
+    Returns the titles themselves rather than normalised keys, because the
+    caller now compares them the same way news_sources compares two feed items.
+    An exact key is not enough: "Centre awards 30 KTPA green hydrogen capacity
+    to four oil refineries" was published at 12:47 and "India Awards
+    30,000-Tonne Green Hydrogen Supply Contracts to Decarbonise State
+    Refineries" at 16:58, one award and two articles, because the strings
+    differ.
+    """
+    out, page = [], 1
     while len(out) < limit:
         r = requests.get(POSTS_READ, params={"per_page": 100, "page": page,
                                              "_fields": "title", "status": "publish,draft"},
@@ -191,8 +200,7 @@ def existing_titles(limit: int = 200) -> set[str]:
         batch = r.json()
         if not batch:
             break
-        out |= {re.sub(r"[^a-z0-9]+", "", re.sub("<[^>]+>", "", p["title"]["rendered"]).lower())[:60]
-                for p in batch}
+        out += [html.unescape(re.sub("<[^>]+>", "", p["title"]["rendered"])) for p in batch]
         if len(batch) < 100:
             break
         page += 1
@@ -264,11 +272,24 @@ def main() -> int:
         logger.error("no feed answered; not publishing")
         return 1
 
-    seen = existing_titles()
+    # De-duplication inside collect() only sees one run. The site is the other
+    # half of the memory: without this, a story picked up again the next
+    # morning under a reworded headline is published a second time, which is
+    # how the site ended up with eleven versions of one hydrogen-train story.
+    seen = news_sources.SeenStories(existing_titles())
+
     def fresh(items):
-        """Items whose titles are not already published on the site."""
-        return [i for i in items
-                if re.sub(r"[^a-z0-9]+", "", i.title.lower())[:60] not in seen]
+        """Items that do not retell something already on the site."""
+        out = []
+        for i in items:
+            if seen.covers(i.title):
+                logger.info("    already covered, skipping: %s", i.title[:64])
+                continue
+            # Recorded as we go, so the India and global slices of one run
+            # cannot pick the same story either.
+            seen.add(i.title)
+            out.append(i)
+        return out
 
     picked = fresh(india)[:n_india] + fresh(world)[:n_glob]
     logger.info("selected %d item(s) (%d India / %d global)", len(picked), n_india, n_glob)

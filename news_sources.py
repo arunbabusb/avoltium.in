@@ -392,6 +392,32 @@ def _is_duplicate(sig: frozenset, kept: list) -> bool:
     return False
 
 
+class SeenStories:
+    """Stories already covered, so a later run does not retell one.
+
+    collect() de-duplicates within a single run. This is the other half of the
+    memory, for the caller that knows what is already published: a story picked
+    up again the next morning under a reworded headline is a new string and
+    would otherwise sail straight through.
+    """
+
+    def __init__(self, titles=()):
+        """Seed from titles already covered, in any order."""
+        self._keys = set()
+        self._sigs = []
+        for t in titles:
+            self.add(t)
+
+    def add(self, title: str) -> None:
+        """Record one title as covered."""
+        self._keys.add(_norm(title))
+        self._sigs.append(_sig(title))
+
+    def covers(self, title: str) -> bool:
+        """Whether this headline retells something already recorded."""
+        return _norm(title) in self._keys or _is_duplicate(_sig(title), self._sigs)
+
+
 def collect(max_age_hours: int = 36) -> tuple[List[NewsItem], List[NewsItem], int]:
     """Fresh, on-topic, de-duplicated items. Returns (india, global, feeds_ok)."""
     india, world, ok = [], [], 0

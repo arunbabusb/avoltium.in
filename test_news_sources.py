@@ -22,7 +22,8 @@ import unittest
 from datetime import datetime, timedelta, timezone
 
 from news_sources import (
-    NOISE, NewsItem, _is_duplicate, _norm, _sig, is_relevant, region_of,
+    NOISE, NewsItem, SeenStories, _is_duplicate, _norm, _sig, is_relevant,
+    region_of,
 )
 
 
@@ -291,3 +292,41 @@ class TestRanking(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class TestSeenStories(unittest.TestCase):
+    """Memory across runs, not just within one.
+
+    The site had two articles about one award four hours apart because the
+    publisher compared exact strings against what was already posted.
+    """
+
+    def test_a_reworded_headline_is_recognised(self):
+        """The pair that actually reached the live site."""
+        seen = SeenStories(["Centre awards 30 KTPA green hydrogen capacity to "
+                            "four oil refineries under National Green Hydrogen Mission"])
+        self.assertTrue(seen.covers(
+            "India Awards 30,000-Tonne Green Hydrogen Supply Contracts to "
+            "Decarbonise State Refineries"))
+
+    def test_an_unrelated_story_is_not_blocked(self):
+        """A memory that swallows the news is worse than none."""
+        seen = SeenStories(["Centre awards 30 KTPA green hydrogen capacity to four refineries"])
+        self.assertFalse(seen.covers("Marginal costs for hydrogen are falling"))
+
+    def test_exact_repeat_is_recognised(self):
+        """The same wire item arriving again tomorrow."""
+        seen = SeenStories(["Marginal costs for hydrogen are falling"])
+        self.assertTrue(seen.covers("Marginal costs for hydrogen are falling!"))
+
+    def test_add_extends_the_memory(self):
+        """Items picked in one run block later items in the same run."""
+        seen = SeenStories()
+        self.assertFalse(seen.covers("India Awards 30,000-Tonne Green Hydrogen Supply Contracts"))
+        seen.add("India Awards 30,000-Tonne Green Hydrogen Supply Contracts")
+        self.assertTrue(seen.covers(
+            "Indian oil companies to consume 30,000 tonnes of green hydrogen a year"))
+
+    def test_empty_memory_covers_nothing(self):
+        """A fresh site must not reject its first article."""
+        self.assertFalse(SeenStories().covers("Marginal costs for hydrogen are falling"))
