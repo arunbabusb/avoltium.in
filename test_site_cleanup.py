@@ -149,6 +149,25 @@ class TestResolveLinks(unittest.TestCase):
         self.assertEqual(new, body)
         self.assertEqual(fixes, [])
 
+    def test_google_news_redirect_is_unlinked_keeping_the_headline(self):
+        """An opaque redirect names nothing and expires. The headline is what
+        a reader actually needs to find the story."""
+        body = ('<p>reporting by <strong>The Tribune</strong>: <a href="https://'
+                'news.google.com/rss/articles/CBMi5AFBVV95cUx?oc=5" rel="nofollow">'
+                'Centre awards 30 KTPA capacity</a>, published 11 August 2026.</p>')
+        new, fixes = fix_internal_links.repair_body(body, self.LIVE)
+        self.assertNotIn("news.google.com", new)
+        self.assertIn("Centre awards 30 KTPA capacity", new)
+        self.assertIn("The Tribune", new)
+        self.assertTrue(any("news.google.com" in was for was, _ in fixes))
+
+    def test_unlinking_leaves_other_anchors_alone(self):
+        body = ('<a href="https://news.google.com/rss/articles/X">A</a>'
+                '<a href="https://pib.gov.in/r/">B</a>')
+        new, _ = fix_internal_links.unlink_google_news(body)
+        self.assertIn('<a href="https://pib.gov.in/r/">B</a>', new)
+        self.assertNotIn("news.google.com", new)
+
     def test_surrounding_attributes_survive_the_rewrite(self):
         body = ('<a href="https://www.avoltium.in/water-consumption-calculator/" '
                 'style="color:#0056b3; font-weight:bold;">Water Treatment</a>')
@@ -281,6 +300,74 @@ class TestCitations(unittest.TestCase):
             self.assertEqual(set(editorial_provenance.load_citations(path)), {"real-slug"})
         finally:
             os.unlink(path)
+
+
+class TestNewArticlesAreCitable(unittest.TestCase):
+    """What every article published from now on says about its source."""
+
+    def _item(self, link, home="", title="Centre awards 30 KTPA capacity"):
+        import datetime as dt
+        import news_sources
+        return news_sources.NewsItem(
+            title=title, link=link, publisher="The Tribune",
+            published=dt.datetime(2026, 8, 11, tzinfo=dt.timezone.utc),
+            summary="x" * 250, region="india", publisher_home=home)
+
+    def test_real_article_url_is_linked(self):
+        import publish_news
+        item = self._item("https://www.tribuneindia.com/news/story-123/")
+        out = publish_news.sources_block(item)
+        self.assertIn('href="https://www.tribuneindia.com/news/story-123/"', out)
+        self.assertTrue(item.links_to_article)
+
+    def test_google_news_redirect_is_never_linked(self):
+        """The 11 August post cites 668 characters of opaque redirect. A
+        reader cannot check that, so it is not offered as a citation."""
+        import publish_news
+        item = self._item("https://news.google.com/rss/articles/CBMi5AFBVV95cUx",
+                          home="https://www.tribuneindia.com")
+        out = publish_news.sources_block(item)
+        self.assertNotIn("news.google.com", out)
+        self.assertIn("https://www.tribuneindia.com", out)
+        self.assertIn("did not", out)          # says why it is not the article
+        self.assertFalse(item.links_to_article)
+
+    def test_headline_and_publisher_survive_with_no_link_at_all(self):
+        import publish_news
+        item = self._item("https://news.google.com/rss/articles/CBMi5A")
+        out = publish_news.sources_block(item)
+        self.assertNotIn("news.google.com", out)
+        self.assertNotIn("<a ", out)
+        self.assertIn("The Tribune", out)
+        self.assertIn("Centre awards 30 KTPA capacity", out)
+        self.assertIn("11 August 2026", out)
+
+    def test_citable_link_prefers_the_article(self):
+        item = self._item("https://www.tribuneindia.com/a/", home="https://x.com")
+        self.assertEqual(item.citable_link, "https://www.tribuneindia.com/a/")
+
+    def test_a_post_with_its_own_source_does_not_disclaim_it(self):
+        block = editorial_provenance.build_block(
+            "T", "Arun", "Chief Engineer", "11 August 2026", has_sources=True)
+        self.assertNotIn("These are not citations for individual statements", block)
+
+    def test_feed_parsing_keeps_the_publisher_home(self):
+        """<source url> is the one part of a Google News item that names a
+        real, reachable publisher."""
+        import xml.etree.ElementTree as ET
+        import news_sources
+        xml = """<rss><channel><item>
+          <title>Centre approves jetty - News On AIR</title>
+          <link>https://news.google.com/rss/articles/CBMiabc</link>
+          <pubDate>Tue, 11 Aug 2026 19:32:51 GMT</pubDate>
+          <description>A summary of the announcement.</description>
+          <source url="https://newsonair.gov.in">News On AIR</source>
+        </item></channel></rss>"""
+        root = ET.fromstring(xml)
+        it = root.find(".//item")
+        src = it.find("source")
+        self.assertEqual(src.get("url"), "https://newsonair.gov.in")
+        self.assertTrue(news_sources.GOOGLE_NEWS.match(it.find("link").text))
 
 
 class TestShippedCitationsFile(unittest.TestCase):

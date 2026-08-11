@@ -108,6 +108,21 @@ KNOWN = {
 }
 
 
+# A Google News RSS link is a redirect whose payload is an opaque token, so it
+# names nothing and, once the item ages out, leads nowhere. One published post
+# cites "The Tribune" and links 668 characters of it. Unlink it: the headline
+# stays as text, which is what a reader needs to find the story, and the post's
+# Sources block carries the real reporting.
+GOOGLE_NEWS_ANCHOR = re.compile(
+    r'<a\b[^>]*href="https?://(?:www\.)?news\.google\.com/[^"]*"[^>]*>(?P<text>.*?)</a>',
+    re.S | re.I)
+
+
+def unlink_google_news(body: str) -> tuple[str, int]:
+    """Strip Google News redirect anchors, keeping their text."""
+    return GOOGLE_NEWS_ANCHOR.subn(lambda m: m.group("text"), body)
+
+
 def repair_body(body: str, live: dict[str, str]) -> tuple[str, list[tuple[str, str]]]:
     """Rewrite every resolvable broken link in one post body."""
     fixes: list[tuple[str, str]] = []
@@ -122,7 +137,11 @@ def repair_body(body: str, live: dict[str, str]) -> tuple[str, list[tuple[str, s
         fixes.append((path, target))
         return m.group(0).replace(url, url.replace(path, target, 1))
 
-    return LINK.sub(sub, body), fixes
+    out = LINK.sub(sub, body)
+    out, unlinked = unlink_google_news(out)
+    if unlinked:
+        fixes.append(("news.google.com redirect", "unlinked, headline kept as text"))
+    return out, fixes
 
 
 def main() -> int:

@@ -155,7 +155,8 @@ def further_reading(title: str) -> list[tuple[str, str]]:
 
 
 def build_block(title: str, reviewer: str, role: str, reviewed: str,
-                slug: str = "", citations: dict | None = None) -> str:
+                slug: str = "", citations: dict | None = None,
+                has_sources: bool = False) -> str:
     """Build the provenance aside, wrapped in the sentinel comments.
 
     The sentinels are what make this idempotent: a later run substitutes the
@@ -170,7 +171,11 @@ def build_block(title: str, reviewer: str, role: str, reviewed: str,
     # background and cite nothing in particular. On a post that now carries
     # real sources that reads as a disclaimer against its own citations, so
     # the wording splits on whether there is anything above it.
-    fr_note = ("Further background, beyond the sources above." if sources else
+    # has_sources covers the posts publish_news.py writes: those carry their
+    # own Source block above the body, so the note must not go on to tell the
+    # reader that nothing here cites anything.
+    fr_note = ("Further background, beyond the sources above."
+               if sources or has_sources else
                "Background on this subject. These are not citations for "
                "individual statements above.")
     return (
