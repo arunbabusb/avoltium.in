@@ -96,8 +96,9 @@ this site does not have.
 | `publish_image_credits.py` | `clean_caption()` so escaped markup can't be re-emitted |
 | `generate_article.py`, `rewrite_content.py` | Correct calculator slug in the injected link |
 | `fix_articles.py` | Stops "repairing" the link into a second dead URL |
-| `citations.json` + `editorial_provenance.py` | Real per-post sources on 8 news posts |
-| `test_site_cleanup.py` | 38 offline tests over all of the above |
+| `citations.json` + `editorial_provenance.py` | Sources on 12 posts, references on 20 |
+| `news_sources.py`, `publish_news.py` | New articles cite only checkable links |
+| `test_site_cleanup.py` | 54 offline tests over all of the above |
 | `.github/workflows/site_cleanup.yml` | Manual dispatch, dry run by default |
 
 Two of the thirteen train posts are kept: `hydrogen-train` (the 1,745-word
@@ -186,15 +187,51 @@ a reader to discover, but the underlying habit is worth stopping — it is
 `news_sources.py`'s `max_age_hours` doing its job only for items that come
 through the feed path.
 
+Since then the backfill was finished: **12 posts carry reporting sources and
+20 carry references** (standards and published datasets, rendered as a
+separate list because they are a baseline, not reporting). Greenzo, the
+SBICAPS report, BriHyNergy and the Kochi summit were added to the eight above.
+
+**New articles are now cited automatically.** `publish_news.py` already
+carried source URL, publisher and timestamp; two things were wrong with it and
+are fixed. It linked Google News redirect URLs — the 11 August refinery post
+cites "The Tribune" and links 668 characters of `news.google.com/rss/articles/`
+whose payload is an opaque token that decodes to nothing. And a post carrying
+a Source block then said underneath that nothing here cites any individual
+statement. Now a citation is only offered where it leads somewhere checkable,
+and the provenance note no longer contradicts it.
+
+### Four posts that cannot be cited, and five whose titles do not match
+
+Recorded in `citations.json` under `_UNCITABLE` and `_MISMATCHED`, with the
+reason and a recommendation for each, because a silent gap looks like an
+oversight and a plausible-but-wrong citation is worse than none:
+
+- **Gujarat data centre policy** (15 July) calls the Viksit Gujarat policy
+  "newly minted". It was notified 7 August — three weeks *after* this post ran
+  — and the headline claim of "50%+ acceleration" traces to nothing published.
+- **As told to Parliament** (21 July) is about women's share of the
+  agricultural workforce, with a green ammonia aside attached.
+- **Both roundups** aggregate many announcements with no single source.
+
+And the pattern worth acting on: **26 of the 40 surviving posts carry a
+water-treatment or feedstock-purity section, whatever the headline says.** One
+template appears to have been applied across many titles. "Global Oil Markets
+2026" mentions oil, OPEC, barrel or crude **twice** and electrolyzer or water
+**34 times**; all four of its section headings are electrolyzer and water
+treatment. The same holds for the drilling, offshore wind and compressor
+posts, and "Building a Zero-Incident Safety Culture" is 423 words whose only
+heading is "About this article".
+
+That is the duplicate-content problem the hydrogen-train cluster made obvious,
+in a form title-level checks do not catch — and it is probably closer to what
+the reviewer actually saw than the train cluster was.
+
 Remaining work, in order of impact:
 
-1. **Cite the other posts.** Eight of roughly 15 news posts now have sources.
-   The rest — Greenzo, BriHyNergy, the SBICAPS report, the Gujarat data centre
-   policy, the summit write-up, the weekly deal roundups — still need the same
-   treatment, and the engineering deep-dives would be stronger citing the
-   standards and papers they lean on. `publish_news.py` already carries source
-   URL, publisher and timestamp for anything published through it; this
-   backfill is for the July batch that predates it.
+1. **Fix the mismatched titles.** Five posts promise a subject their body does
+   not deliver. Retitle each to what it argues, or retire it. This is a
+   half-day of editing and it removes the strongest remaining signal.
 2. **Publish something that is not derivable from a press release.** The
    engineering deep-dives (LCOH sensitivity, EDI vs mixed-bed polishing,
    gasket selection for alkaline stacks) are the strongest thing here and read

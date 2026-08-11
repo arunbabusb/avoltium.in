@@ -112,30 +112,66 @@ def load_citations(path: str = "") -> dict:
     return {k: v for k, v in data.items() if not k.startswith("_")}
 
 
-def sources_html(slug: str, citations: dict) -> str:
-    """The Sources section for one post, or "" if it has no verified sources.
+def load_reference_library(path: str = "") -> dict:
+    """The shared standards and datasets posts cite by key.
 
-    Publisher and date are rendered alongside the title because that is what
-    makes a citation checkable at a glance: a reader can see whether the
-    thing being cited is the announcement itself or somebody's write-up of
-    it, and how old it is.
+    Kept in one place because these are the same handful of documents across
+    the whole archive — twenty-six posts discuss ultrapure water and they all
+    mean ASTM D1193 Type I. Repeating the URL twenty-six times is how one of
+    them ends up pointing somewhere else.
     """
-    entry = citations.get(slug)
-    if not entry or not entry.get("sources"):
-        return ""
-    items = "".join(
+    try:
+        with open(path or CITATIONS_FILE) as fh:
+            return json.load(fh).get("_REFERENCES", {})
+    except (OSError, ValueError):
+        return {}
+
+
+def _cite_items(entries: list) -> str:
+    """<li> for each source, with publisher and date so it can be checked."""
+    return "".join(
         f'<li><a href="{html.escape(s["url"])}" rel="nofollow noopener" '
         f'target="_blank">{html.escape(s["title"])}</a> — '
         f'{html.escape(s["publisher"])}, {html.escape(s["date"])}</li>'
-        for s in entry["sources"])
-    # Where the reporting is materially older than the post, say so here
-    # rather than leaving a reader to work it out from the datelines.
-    note = (f'<p class="av-src-note">{html.escape(entry["note"])}</p>'
-            if entry.get("note") else "")
-    return (f'<h3>Sources</h3>'
-            f'<p class="av-src-note">The reporting this article is built on. '
-            f'Figures above are drawn from these.</p>'
-            f'<ul class="av-sources">{items}</ul>{note}')
+        for s in entries)
+
+
+def sources_html(slug: str, citations: dict, library: dict | None = None) -> str:
+    """The Sources and References sections for one post.
+
+    Two separate lists, because they carry different weight and conflating
+    them is what the old block did wrong. Sources are the reporting an
+    article was written from — the thing that makes a news claim checkable.
+    References are the standards and published datasets the engineering rests
+    on. A post can have either, both, or neither.
+
+    Publisher and date sit alongside every title: a reader can then see
+    whether they are looking at the announcement itself or somebody's
+    write-up of it, and how old it is.
+    """
+    entry = citations.get(slug)
+    if not entry:
+        return ""
+    library = library or {}
+
+    out = ""
+    if entry.get("sources"):
+        # Where the reporting is materially older than the post, say so here
+        # rather than leaving a reader to work it out from the datelines.
+        note = (f'<p class="av-src-note">{html.escape(entry["note"])}</p>'
+                if entry.get("note") else "")
+        out += (f'<h3>Sources</h3>'
+                f'<p class="av-src-note">The reporting this article is built on. '
+                f'Figures above are drawn from these.</p>'
+                f'<ul class="av-sources">{_cite_items(entry["sources"])}</ul>{note}')
+
+    refs = [library[k] for k in entry.get("references", []) if k in library]
+    if refs:
+        out += (f'<h3>References</h3>'
+                f'<p class="av-src-note">The standards and published data this '
+                f'analysis works from.</p>'
+                f'<ul class="av-references">{_cite_items(refs)}</ul>')
+    return out
 
 
 def further_reading(title: str) -> list[tuple[str, str]]:
@@ -156,7 +192,7 @@ def further_reading(title: str) -> list[tuple[str, str]]:
 
 def build_block(title: str, reviewer: str, role: str, reviewed: str,
                 slug: str = "", citations: dict | None = None,
-                has_sources: bool = False) -> str:
+                has_sources: bool = False, library: dict | None = None) -> str:
     """Build the provenance aside, wrapped in the sentinel comments.
 
     The sentinels are what make this idempotent: a later run substitutes the
@@ -166,7 +202,7 @@ def build_block(title: str, reviewer: str, role: str, reviewed: str,
         f'<li><a href="{html.escape(u)}" rel="nofollow noopener" '
         f'target="_blank">{html.escape(l)}</a></li>'
         for l, u in further_reading(title))
-    sources = sources_html(slug, citations or {})
+    sources = sources_html(slug, citations or {}, library)
     # The old note said the same thing on every post: that these links are
     # background and cite nothing in particular. On a post that now carries
     # real sources that reads as a disclaimer against its own citations, so
@@ -235,6 +271,7 @@ def main() -> int:
 
     s = session()
     citations = load_citations(args.citations)
+    library = load_reference_library(args.citations)
     posts = fetch_all(s)
     if args.limit:
         posts = posts[:args.limit]
@@ -258,7 +295,7 @@ def main() -> int:
         # the moment the post saved. Use the date of the edit.
         reviewed = dt.date.today().strftime("%d %B %Y")
         block = build_block(title, args.reviewer, args.role, reviewed,
-                            slug=slug, citations=citations)
+                            slug=slug, citations=citations, library=library)
         body = p["content"]["rendered"]
         new = BLOCK.sub(block, body) if BLOCK.search(body) else body.rstrip() + "\n" + block
         if new.strip() == body.strip():

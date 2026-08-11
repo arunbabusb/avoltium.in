@@ -388,8 +388,7 @@ class TestShippedCitationsFile(unittest.TestCase):
 
     def test_every_source_is_complete_and_absolute(self):
         for slug, entry in self.data.items():
-            self.assertTrue(entry.get("sources"), f"{slug} has no sources")
-            for s in entry["sources"]:
+            for s in entry.get("sources", []):
                 for field in ("title", "url", "publisher", "date"):
                     self.assertTrue(s.get(field), f"{slug}: source missing {field}")
                 self.assertTrue(s["url"].startswith("https://"), f"{slug}: {s['url']}")
@@ -416,14 +415,59 @@ class TestShippedCitationsFile(unittest.TestCase):
         self.assertNotIn("_UNCITABLE", self.data)
         self.assertNotIn("_README", self.data)
 
+    def test_references_resolve_against_the_library(self):
+        """A reference key with no library entry renders nothing at all, so a
+        typo would silently drop the citation it was meant to add."""
+        library = editorial_provenance.load_reference_library("citations.json")
+        for slug, entry in self.data.items():
+            for key in entry.get("references", []):
+                self.assertIn(key, library, f"{slug} cites unknown reference {key}")
+
+    def test_library_entries_are_complete_and_absolute(self):
+        library = editorial_provenance.load_reference_library("citations.json")
+        for key, ref in library.items():
+            if key.startswith("_"):
+                continue
+            for field in ("title", "url", "publisher", "date"):
+                self.assertTrue(ref.get(field), f"{key} missing {field}")
+            self.assertTrue(ref["url"].startswith("https://"))
+
+    def test_every_entry_carries_sources_or_references(self):
+        """An entry with neither is a slug taking up space."""
+        for slug, entry in self.data.items():
+            self.assertTrue(entry.get("sources") or entry.get("references"),
+                            f"{slug} has neither sources nor references")
+
+    def test_mismatched_posts_are_recorded_with_measurements(self):
+        """The claim that a title does not match its body should rest on a
+        measurement, not an impression."""
+        with open("citations.json") as fh:
+            raw = json.load(fh)
+        entries = {k: v for k, v in raw["_MISMATCHED"].items() if k != "why"}
+        self.assertTrue(entries)
+        for slug, entry in entries.items():
+            self.assertTrue(entry.get("measured"), f"{slug} states no measurement")
+            self.assertTrue(entry.get("recommend"), f"{slug} recommends nothing")
+
+    def test_mismatched_posts_are_not_dressed_up_with_references(self):
+        """Adding references to a post whose title lies about its content
+        would hide the problem instead of naming it."""
+        with open("citations.json") as fh:
+            raw = json.load(fh)
+        mismatched = {k for k in raw["_MISMATCHED"] if k != "why"}
+        self.assertFalse(mismatched & set(self.data))
+
     def test_no_source_is_a_bare_landing_page(self):
         """The whole problem being fixed was citing institutional home pages.
         A citation has to point at the item, not at the publisher."""
-        for slug, entry in self.data.items():
-            for s in entry["sources"]:
-                path = s["url"].split("//", 1)[1]
-                self.assertIn("/", path.rstrip("/"),
-                              f"{slug}: {s['url']} is a bare domain")
+        library = editorial_provenance.load_reference_library("citations.json")
+        cited = [(slug, s) for slug, e in self.data.items()
+                 for s in e.get("sources", [])]
+        cited += [(k, ref) for k, ref in library.items() if not k.startswith("_")]
+        for slug, s in cited:
+            path = s["url"].split("//", 1)[1]
+            self.assertIn("/", path.rstrip("/"),
+                          f"{slug}: {s['url']} is a bare domain")
 
 
 if __name__ == "__main__":
