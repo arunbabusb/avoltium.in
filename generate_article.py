@@ -861,7 +861,10 @@ def main() -> None:
     )
     html_content = re.sub(
         r"(?i)\b(water treatment|ultrapure water|water consumption)\b",
-        f'<a href="{WP_URL}/water-consumption-calculator/" style="color:#0056b3; font-weight:bold;">\\1</a>',
+        # The page is published at water-consumption-treatment-calculator.
+        # The shorter slug guessed here never existed, so every article this
+        # produced — 46 of them — carried a link to a 404.
+        f'<a href="{WP_URL}/water-consumption-treatment-calculator/" style="color:#0056b3; font-weight:bold;">\\1</a>',
         html_content,
         count=2,
     )

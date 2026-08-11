@@ -1,0 +1,474 @@
+#!/usr/bin/env python3
+"""Offline tests for the three repairs made after the AdSense rejection.
+
+No network. Every case here is built from what was actually on the live site
+on 11 August 2026, because the failures being tested for were all things that
+looked correct in the code and wrong on the page.
+"""
+from __future__ import annotations
+
+import unittest
+
+import json
+import os
+
+import editorial_provenance
+import fix_image_credits
+import fix_internal_links
+import prune_low_value
+from publish_image_credits import clean_caption, credit_html
+
+
+class TestCleanCaption(unittest.TestCase):
+    """Recovering a name from whatever Wikimedia and WordPress did to it."""
+
+    def test_escaped_anchor_becomes_a_name(self):
+        """The exact string that rendered as markup on seven live pages."""
+        raw = ("&lt;a href=&#8221;//commons.wikimedia.org/wiki/User:Kyy0602&#8243; "
+               "title=&#8221;User:Kyy0602&#8243;&gt;Scarlett Kang&lt;/a&gt; "
+               "/ CC BY-SA 4.0 via Wikimedia Commons")
+        self.assertEqual(clean_caption(raw),
+                         "Scarlett Kang / CC BY-SA 4.0 via Wikimedia Commons")
+
+    def test_no_angle_brackets_survive(self):
+        """Whatever comes out must never be able to look like a tag again."""
+        raw = "&amp;lt;a href=&amp;#8221;x&amp;#8243;&amp;gt;Chris Allen&amp;lt;/a&amp;gt;"
+        self.assertNotIn("<", clean_caption(raw))
+        self.assertIn("Chris Allen", clean_caption(raw))
+
+    def test_real_tags_are_stripped_too(self):
+        """A caption that arrives as genuine HTML, not escaped HTML."""
+        self.assertEqual(clean_caption('<a href="/u/x">H. Zell</a> / CC BY-SA 3.0'),
+                         "H. Zell / CC BY-SA 3.0")
+
+    def test_plain_text_is_left_alone(self):
+        self.assertEqual(clean_caption("Government of India / GODL-India"),
+                         "Government of India / GODL-India")
+
+    def test_terminates_on_pathological_input(self):
+        """Bounded loop: this must return, not hang."""
+        self.assertIsInstance(clean_caption("&amp;" * 200), str)
+
+    def test_credit_html_emits_no_visible_markup(self):
+        """The regression that started all of this, asserted end to end."""
+        raw = "&lt;a href=&#8221;x&#8243;&gt;Scarlett Kang&lt;/a&gt; / CC BY-SA 4.0"
+        out = credit_html(raw, "")
+        self.assertIn("Scarlett Kang", out)
+        self.assertNotIn("&lt;a", out)
+        self.assertNotIn("href=&#8221;", out)
+
+
+class TestRepairCredits(unittest.TestCase):
+    """Deciding what to do with a legacy credit block."""
+
+    LEGACY = ('<div style="margin-top:30px;padding:10px;"><strong>Featured Image '
+              'Credit:</strong> &lt;a href=&#8221;//commons.wikimedia.org/wiki/'
+              'User:R&#8221;&gt;Rhododendrites&lt;/a&gt; / CC BY-SA 4.0 via '
+              'Wikimedia Commons</div>')
+    MODERN = ('<!-- avoltium:image-credit --><p class="image-credit"><small>'
+              'Image: Port crane by Flocci Nivis, licensed under CC BY 4.0.'
+              '</small></p><!-- /avoltium:image-credit -->')
+
+    def test_untouched_when_there_is_nothing_to_fix(self):
+        self.assertIsNone(fix_image_credits.repair("<p>An ordinary article.</p>"))
+
+    def test_rewritten_as_text_when_it_is_the_only_credit(self):
+        new, note = fix_image_credits.repair(f"<p>Body.</p>{self.LEGACY}")
+        self.assertIn("Rhododendrites", new)
+        self.assertNotIn("&lt;a", new)
+        self.assertIn("avoltium:image-credit", new)
+        self.assertIn("rewrote", note)
+
+    def test_stale_block_removed_when_a_current_credit_exists(self):
+        """The legacy line names a photograph that is no longer the featured
+        image, so keeping it would credit the wrong photographer."""
+        new, note = fix_image_credits.repair(f"<p>Body.</p>{self.LEGACY}{self.MODERN}")
+        self.assertNotIn("Rhododendrites", new)
+        self.assertIn("Flocci Nivis", new)
+        self.assertIn("stale", note)
+
+    def test_article_body_is_never_touched(self):
+        body = "<p>Electrolyzer stacks degrade.</p>"
+        new, _ = fix_image_credits.repair(body + self.LEGACY)
+        self.assertIn("Electrolyzer stacks degrade.", new)
+
+
+class TestResolveLinks(unittest.TestCase):
+    """Matching a broken internal link back to a page that exists."""
+
+    LIVE = {p: p for p in (
+        "/electrolyzer-calculator/",
+        "/water-consumption-treatment-calculator/",
+        "/2026/07/22/batteries-and-hydrogen-competitors-or-partners/",
+        "/2026/08/02/balance-of-plant-bop-strategies-for-large-scale-green-hydrogen-facilities-2/",
+    )}
+
+    def test_working_link_is_left_alone(self):
+        self.assertIsNone(fix_internal_links.resolve("/electrolyzer-calculator/", self.LIVE))
+
+    def test_dehyphenated_link_is_resolved(self):
+        self.assertEqual(
+            fix_internal_links.resolve(
+                "/2026/07/22/batteriesandhydrogencompetitorsorpartners/", self.LIVE),
+            "/2026/07/22/batteries-and-hydrogen-competitors-or-partners/")
+
+    def test_wordpress_numeric_suffix_is_tolerated(self):
+        """The link was written from the intended slug; WordPress published
+        the post under a -2 because the slug was taken."""
+        self.assertEqual(
+            fix_internal_links.resolve(
+                "/2026/08/02/balanceofplantbopstrategiesforlargescalegreenhydrogenfacilities/",
+                self.LIVE),
+            "/2026/08/02/balance-of-plant-bop-strategies-for-large-scale-green-hydrogen-facilities-2/")
+
+    def test_suffix_tolerance_does_not_run_backwards(self):
+        """/project-2/ and /project/ are two articles, not one."""
+        self.assertIsNone(fix_internal_links.resolve("/project-2/", {"/project/": "/project/"}))
+
+    def test_ambiguous_match_is_refused(self):
+        """Two real slugs collapsing to one squashed key must resolve to
+        neither, rather than to whichever the set happened to yield."""
+        live = {"/a-b/": "/a-b/", "/ab/": "/ab/"}
+        self.assertIsNone(fix_internal_links.resolve("/a-b-/", live))
+
+    def test_unknown_link_is_not_guessed(self):
+        self.assertIsNone(fix_internal_links.resolve("/nothing-like-this/", self.LIVE))
+
+    def test_calculator_link_is_repaired_by_name(self):
+        """No amount of hyphen removal turns the old slug into the real one,
+        because the real one has a word the link never had."""
+        body = ('<p>See our <a href="https://www.avoltium.in/water-consumption-calculator/"'
+                ' style="color:#0056b3;">water treatment</a> tool.</p>')
+        new, fixes = fix_internal_links.repair_body(body, self.LIVE)
+        self.assertIn("/water-consumption-treatment-calculator/", new)
+        self.assertEqual(len(fixes), 1)
+
+    def test_external_links_are_untouched(self):
+        body = '<p><a href="https://pib.gov.in/release/">PIB</a></p>'
+        new, fixes = fix_internal_links.repair_body(body, self.LIVE)
+        self.assertEqual(new, body)
+        self.assertEqual(fixes, [])
+
+    def test_google_news_redirect_is_unlinked_keeping_the_headline(self):
+        """An opaque redirect names nothing and expires. The headline is what
+        a reader actually needs to find the story."""
+        body = ('<p>reporting by <strong>The Tribune</strong>: <a href="https://'
+                'news.google.com/rss/articles/CBMi5AFBVV95cUx?oc=5" rel="nofollow">'
+                'Centre awards 30 KTPA capacity</a>, published 11 August 2026.</p>')
+        new, fixes = fix_internal_links.repair_body(body, self.LIVE)
+        self.assertNotIn("news.google.com", new)
+        self.assertIn("Centre awards 30 KTPA capacity", new)
+        self.assertIn("The Tribune", new)
+        self.assertTrue(any("news.google.com" in was for was, _ in fixes))
+
+    def test_unlinking_leaves_other_anchors_alone(self):
+        body = ('<a href="https://news.google.com/rss/articles/X">A</a>'
+                '<a href="https://pib.gov.in/r/">B</a>')
+        new, _ = fix_internal_links.unlink_google_news(body)
+        self.assertIn('<a href="https://pib.gov.in/r/">B</a>', new)
+        self.assertNotIn("news.google.com", new)
+
+    def test_surrounding_attributes_survive_the_rewrite(self):
+        body = ('<a href="https://www.avoltium.in/water-consumption-calculator/" '
+                'style="color:#0056b3; font-weight:bold;">Water Treatment</a>')
+        new, _ = fix_internal_links.repair_body(body, self.LIVE)
+        self.assertIn('style="color:#0056b3; font-weight:bold;"', new)
+        self.assertIn(">Water Treatment</a>", new)
+
+
+class TestPrunePlan(unittest.TestCase):
+    """What the retire manifest resolves to against a live archive."""
+
+    def _item(self, slug, status="publish", kind="post"):
+        base = "https://www.avoltium.in"
+        link = f"{base}/2026/07/17/{slug}/" if kind == "post" else f"{base}/{slug}/"
+        return {"id": abs(hash(slug)) % 9999, "link": link, "status": status,
+                "date": "2026-07-17T00:00:00", "title": {"rendered": slug}}
+
+    def test_manifest_keeps_and_retires_are_disjoint(self):
+        """A slug in both lists would retire the post meant to survive."""
+        self.assertFalse(set(prune_low_value.TRAIN_KEEP) & set(prune_low_value.TRAIN_RETIRE))
+
+    def test_every_retire_entry_has_a_stated_reason(self):
+        for slug in prune_low_value.TRAIN_RETIRE + prune_low_value.DEMO_PAGES:
+            self.assertIn(slug, prune_low_value.RETIRE_REASON)
+
+    def test_keepers_are_never_targeted(self):
+        posts = [self._item(s) for s in
+                 prune_low_value.TRAIN_KEEP + prune_low_value.TRAIN_RETIRE]
+        targets, _ = prune_low_value.plan(posts, [])
+        hit = {t["slug"] for t in targets}
+        self.assertEqual(hit, set(prune_low_value.TRAIN_RETIRE))
+        for keeper in prune_low_value.TRAIN_KEEP:
+            self.assertNotIn(keeper, hit)
+
+    def _demo_pages(self, status="publish"):
+        """The three theme pages, so a post-focused case reports only posts."""
+        return [self._item(s, status=status, kind="page")
+                for s in prune_low_value.DEMO_PAGES]
+
+    def test_already_drafted_posts_are_not_touched_again(self):
+        posts = [self._item(s, status="draft") for s in prune_low_value.TRAIN_RETIRE]
+        targets, missing = prune_low_value.plan(posts, self._demo_pages(status="draft"))
+        self.assertEqual(targets, [])
+        self.assertEqual(missing, [])
+
+    def test_a_slug_that_no_longer_exists_is_reported(self):
+        """Silently doing ten of eleven things is how a cleanup half-happens."""
+        posts = [self._item(s) for s in prune_low_value.TRAIN_RETIRE[:-1]]
+        _, missing = prune_low_value.plan(posts, self._demo_pages())
+        self.assertEqual(missing, [prune_low_value.TRAIN_RETIRE[-1]])
+
+    def test_demo_pages_are_planned_against_the_pages_endpoint(self):
+        pages = [self._item(s, kind="page") for s in prune_low_value.DEMO_PAGES]
+        targets, _ = prune_low_value.plan([], pages)
+        self.assertEqual(len(targets), len(prune_low_value.DEMO_PAGES))
+        for t in targets:
+            self.assertEqual(t["kind"], "page")
+            self.assertIn("pages", t["endpoint"])
+
+    def test_journal_entry_carries_what_restore_needs(self):
+        """--restore replays these fields; missing one makes a run one-way."""
+        targets, _ = prune_low_value.plan([self._item(prune_low_value.TRAIN_RETIRE[0])], [])
+        for field in ("id", "endpoint", "status", "title"):
+            self.assertIn(field, targets[0])
+        self.assertEqual(targets[0]["status"], "publish")
+
+
+class TestCitations(unittest.TestCase):
+    """Rendering verified sources into the provenance block."""
+
+    CITES = {
+        "a-post": {
+            "checked": "2026-08-11",
+            "verified": "Rs 797.17 crore, 4 MTPA.",
+            "note": "Source is dated 27 February 2026; this post ran 16 July 2026.",
+            "sources": [{"title": "Centre clears Rs 797 crore jetty",
+                         "url": "https://ddnews.gov.in/en/story/",
+                         "publisher": "DD News", "date": "27 February 2026"}],
+        },
+    }
+
+    def test_sources_render_with_publisher_and_date(self):
+        """A citation is only checkable if you can see who published it, when."""
+        out = editorial_provenance.sources_html("a-post", self.CITES)
+        self.assertIn("https://ddnews.gov.in/en/story/", out)
+        self.assertIn("DD News", out)
+        self.assertIn("27 February 2026", out)
+
+    def test_stale_dateline_note_is_surfaced(self):
+        out = editorial_provenance.sources_html("a-post", self.CITES)
+        self.assertIn("this post ran 16 July 2026", out)
+
+    def test_post_without_citations_gets_no_sources_section(self):
+        self.assertEqual(editorial_provenance.sources_html("other", self.CITES), "")
+
+    def test_cited_post_does_not_disclaim_its_own_citations(self):
+        """The generic note says these links cite nothing in particular. On a
+        post that now carries real sources that reads as a disclaimer against
+        them, so the wording has to change."""
+        block = editorial_provenance.build_block(
+            "T", "Arun", "Chief Engineer", "11 August 2026",
+            slug="a-post", citations=self.CITES)
+        self.assertIn("<h3>Sources</h3>", block)
+        self.assertNotIn("These are not citations for individual statements", block)
+
+    def test_uncited_post_keeps_the_honest_note(self):
+        block = editorial_provenance.build_block(
+            "T", "Arun", "Chief Engineer", "11 August 2026",
+            slug="other", citations=self.CITES)
+        self.assertNotIn("<h3>Sources</h3>", block)
+        self.assertIn("These are not citations for individual statements", block)
+
+    def test_urls_are_escaped(self):
+        cites = {"p": {"sources": [{"title": 'X"onclick=', "url": 'https://e.com/"x',
+                                    "publisher": "P", "date": "2026"}]}}
+        out = editorial_provenance.sources_html("p", cites)
+        self.assertNotIn('href="https://e.com/"x"', out)
+        self.assertIn("&quot;", out)
+
+    def test_a_broken_citations_file_does_not_break_the_run(self):
+        """A bad JSON file must cost citations, not the byline on 51 posts."""
+        self.assertEqual(editorial_provenance.load_citations("/nonexistent.json"), {})
+
+    def test_readme_keys_are_not_treated_as_posts(self):
+        import tempfile
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as fh:
+            json.dump({"_README": ["notes"], "real-slug": {"sources": []}}, fh)
+            path = fh.name
+        try:
+            self.assertEqual(set(editorial_provenance.load_citations(path)), {"real-slug"})
+        finally:
+            os.unlink(path)
+
+
+class TestNewArticlesAreCitable(unittest.TestCase):
+    """What every article published from now on says about its source."""
+
+    def _item(self, link, home="", title="Centre awards 30 KTPA capacity"):
+        import datetime as dt
+        import news_sources
+        return news_sources.NewsItem(
+            title=title, link=link, publisher="The Tribune",
+            published=dt.datetime(2026, 8, 11, tzinfo=dt.timezone.utc),
+            summary="x" * 250, region="india", publisher_home=home)
+
+    def test_real_article_url_is_linked(self):
+        import publish_news
+        item = self._item("https://www.tribuneindia.com/news/story-123/")
+        out = publish_news.sources_block(item)
+        self.assertIn('href="https://www.tribuneindia.com/news/story-123/"', out)
+        self.assertTrue(item.links_to_article)
+
+    def test_google_news_redirect_is_never_linked(self):
+        """The 11 August post cites 668 characters of opaque redirect. A
+        reader cannot check that, so it is not offered as a citation."""
+        import publish_news
+        item = self._item("https://news.google.com/rss/articles/CBMi5AFBVV95cUx",
+                          home="https://www.tribuneindia.com")
+        out = publish_news.sources_block(item)
+        self.assertNotIn("news.google.com", out)
+        self.assertIn("https://www.tribuneindia.com", out)
+        self.assertIn("did not", out)          # says why it is not the article
+        self.assertFalse(item.links_to_article)
+
+    def test_headline_and_publisher_survive_with_no_link_at_all(self):
+        import publish_news
+        item = self._item("https://news.google.com/rss/articles/CBMi5A")
+        out = publish_news.sources_block(item)
+        self.assertNotIn("news.google.com", out)
+        self.assertNotIn("<a ", out)
+        self.assertIn("The Tribune", out)
+        self.assertIn("Centre awards 30 KTPA capacity", out)
+        self.assertIn("11 August 2026", out)
+
+    def test_citable_link_prefers_the_article(self):
+        item = self._item("https://www.tribuneindia.com/a/", home="https://x.com")
+        self.assertEqual(item.citable_link, "https://www.tribuneindia.com/a/")
+
+    def test_a_post_with_its_own_source_does_not_disclaim_it(self):
+        block = editorial_provenance.build_block(
+            "T", "Arun", "Chief Engineer", "11 August 2026", has_sources=True)
+        self.assertNotIn("These are not citations for individual statements", block)
+
+    def test_feed_parsing_keeps_the_publisher_home(self):
+        """<source url> is the one part of a Google News item that names a
+        real, reachable publisher."""
+        import xml.etree.ElementTree as ET
+        import news_sources
+        xml = """<rss><channel><item>
+          <title>Centre approves jetty - News On AIR</title>
+          <link>https://news.google.com/rss/articles/CBMiabc</link>
+          <pubDate>Tue, 11 Aug 2026 19:32:51 GMT</pubDate>
+          <description>A summary of the announcement.</description>
+          <source url="https://newsonair.gov.in">News On AIR</source>
+        </item></channel></rss>"""
+        root = ET.fromstring(xml)
+        it = root.find(".//item")
+        src = it.find("source")
+        self.assertEqual(src.get("url"), "https://newsonair.gov.in")
+        self.assertTrue(news_sources.GOOGLE_NEWS.match(it.find("link").text))
+
+
+class TestShippedCitationsFile(unittest.TestCase):
+    """The research artifact itself, checked as data."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.data = editorial_provenance.load_citations("citations.json")
+
+    def test_file_is_present_and_populated(self):
+        self.assertGreater(len(self.data), 0)
+
+    def test_every_entry_records_what_was_verified_and_when(self):
+        """An entry without this is a URL someone guessed at."""
+        for slug, entry in self.data.items():
+            self.assertTrue(entry.get("verified"), f"{slug} records no verified claim")
+            self.assertTrue(entry.get("checked"), f"{slug} records no check date")
+
+    def test_every_source_is_complete_and_absolute(self):
+        for slug, entry in self.data.items():
+            for s in entry.get("sources", []):
+                for field in ("title", "url", "publisher", "date"):
+                    self.assertTrue(s.get(field), f"{slug}: source missing {field}")
+                self.assertTrue(s["url"].startswith("https://"), f"{slug}: {s['url']}")
+
+    def test_uncitable_posts_are_recorded_with_a_reason(self):
+        """A post left uncited should be a decision on the record, not a gap."""
+        with open("citations.json") as fh:
+            raw = json.load(fh)
+        entries = {k: v for k, v in raw["_UNCITABLE"].items() if k != "why"}
+        self.assertTrue(entries)
+        for slug, entry in entries.items():
+            self.assertTrue(entry.get("problem"), f"{slug} states no problem")
+            self.assertTrue(entry.get("recommend"), f"{slug} recommends nothing")
+
+    def test_a_post_is_never_both_cited_and_uncitable(self):
+        with open("citations.json") as fh:
+            raw = json.load(fh)
+        uncitable = {k for k in raw["_UNCITABLE"] if k != "why"}
+        self.assertFalse(uncitable & set(self.data))
+
+    def test_underscore_sections_never_reach_the_renderer(self):
+        """_UNCITABLE is documentation; rendering it as a post's sources would
+        put an editorial note on a live page."""
+        self.assertNotIn("_UNCITABLE", self.data)
+        self.assertNotIn("_README", self.data)
+
+    def test_references_resolve_against_the_library(self):
+        """A reference key with no library entry renders nothing at all, so a
+        typo would silently drop the citation it was meant to add."""
+        library = editorial_provenance.load_reference_library("citations.json")
+        for slug, entry in self.data.items():
+            for key in entry.get("references", []):
+                self.assertIn(key, library, f"{slug} cites unknown reference {key}")
+
+    def test_library_entries_are_complete_and_absolute(self):
+        library = editorial_provenance.load_reference_library("citations.json")
+        for key, ref in library.items():
+            if key.startswith("_"):
+                continue
+            for field in ("title", "url", "publisher", "date"):
+                self.assertTrue(ref.get(field), f"{key} missing {field}")
+            self.assertTrue(ref["url"].startswith("https://"))
+
+    def test_every_entry_carries_sources_or_references(self):
+        """An entry with neither is a slug taking up space."""
+        for slug, entry in self.data.items():
+            self.assertTrue(entry.get("sources") or entry.get("references"),
+                            f"{slug} has neither sources nor references")
+
+    def test_mismatched_posts_are_recorded_with_measurements(self):
+        """The claim that a title does not match its body should rest on a
+        measurement, not an impression."""
+        with open("citations.json") as fh:
+            raw = json.load(fh)
+        entries = {k: v for k, v in raw["_MISMATCHED"].items() if k != "why"}
+        self.assertTrue(entries)
+        for slug, entry in entries.items():
+            self.assertTrue(entry.get("measured"), f"{slug} states no measurement")
+            self.assertTrue(entry.get("recommend"), f"{slug} recommends nothing")
+
+    def test_mismatched_posts_are_not_dressed_up_with_references(self):
+        """Adding references to a post whose title lies about its content
+        would hide the problem instead of naming it."""
+        with open("citations.json") as fh:
+            raw = json.load(fh)
+        mismatched = {k for k in raw["_MISMATCHED"] if k != "why"}
+        self.assertFalse(mismatched & set(self.data))
+
+    def test_no_source_is_a_bare_landing_page(self):
+        """The whole problem being fixed was citing institutional home pages.
+        A citation has to point at the item, not at the publisher."""
+        library = editorial_provenance.load_reference_library("citations.json")
+        cited = [(slug, s) for slug, e in self.data.items()
+                 for s in e.get("sources", [])]
+        cited += [(k, ref) for k, ref in library.items() if not k.startswith("_")]
+        for slug, s in cited:
+            path = s["url"].split("//", 1)[1]
+            self.assertIn("/", path.rstrip("/"),
+                          f"{slug}: {s['url']} is a bare domain")
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)
