@@ -1,0 +1,146 @@
+{
+  "_README": [
+    "Verified primary sources, keyed by post slug.",
+    "",
+    "Every entry here was checked by opening the source and confirming it",
+    "carries the claim the post is built on — the figure, the parties and the",
+    "date. Nothing goes in this file on the strength of a search result",
+    "snippet or a plausible-looking URL. A citation that does not support the",
+    "sentence it hangs off is worse than no citation, and on a site whose",
+    "articles are AI-drafted it is the specific failure that costs the most.",
+    "",
+    "'checked' is the date the URL was opened and the claim confirmed.",
+    "'verified' records what was actually found there, so the next person can",
+    "re-check the claim without repeating the search.",
+    "",
+    "editorial_provenance.py reads this file and renders a Sources section",
+    "into each post's provenance block. A post with no entry keeps the generic",
+    "Further reading list and says plainly that it is background, not",
+    "citation."
+  ],
+
+  "centre-awards-30-ktpa-green-hydrogen-capacity-to-four-oil-refineries-under-national-green-hydrogen-mission": {
+    "checked": "2026-08-11",
+    "verified": "Total 30 KTPA under SIGHT Mode-2B: IOCL Panipat 10 KTPA, BPCL Bina 5 KTPA, HPCL Vizag 5 KTPA, Numaligarh Refineries 10 KTPA.",
+    "sources": [
+      {
+        "title": "National Green Hydrogen Mission advances green hydrogen adoption in petroleum and refining sector",
+        "url": "https://theindiapost.com/national-green-hydrogen-mission-advances-green-hydrogen-adoption-in-petroleum-and-refining-sector/",
+        "publisher": "The India Post",
+        "date": "11 August 2026"
+      },
+      {
+        "title": "Centre awards 30 KTPA green hydrogen capacity to four oil refineries under National Green Hydrogen Mission",
+        "url": "https://aninews.in/news/business/centre-awards-30-ktpa-green-hydrogen-capacity-to-four-oil-refineries-under-national-green-hydrogen-mission20260811180606/",
+        "publisher": "ANI News",
+        "date": "11 August 2026"
+      }
+    ]
+  },
+
+  "centre-approves-rs-797-crore-green-hydrogen-jetty-at-paradip-port-3": {
+    "checked": "2026-08-11",
+    "verified": "Rs 797.17 crore approved by the Ministry of Ports, Shipping and Waterways; 4 MTPA capacity; implemented by Paradip Port Authority; 24-month completion.",
+    "note": "Source is dated 27 February 2026; this post ran 16 July 2026.",
+    "sources": [
+      {
+        "title": "Centre clears Rs 797 crore green hydrogen jetty project at Paradip Port to boost clean energy logistics",
+        "url": "https://ddnews.gov.in/en/centre-clears-rs-797-crore-green-hydrogen-jetty-project-at-paradip-port-to-boost-clean-energy-logistics/",
+        "publisher": "DD News (Prasar Bharati)",
+        "date": "27 February 2026"
+      }
+    ]
+  },
+
+  "ohmium-and-insolare-collaborate-to-deliver-a-multi-application-green-hydrogen-project-for-nlc-india-limited": {
+    "checked": "2026-08-11",
+    "verified": "4 MW project for NLC India Limited at Neyveli, Tamil Nadu; up to 700 metric tons of hydrogen per year.",
+    "sources": [
+      {
+        "title": "Ohmium and InSolare collaborate to deliver a multi-application green hydrogen project for NLC India Limited",
+        "url": "https://www.ohmium.com/press-release/ohmium-and-insolare-collaborate-to-deliver-a-multi-application-green-hydrogen-project-for-nlc-india-limited",
+        "publisher": "Ohmium International (company announcement)",
+        "date": "28 May 2026"
+      }
+    ]
+  },
+
+  "india-launches-green-hydrogen-certification-portal-to-boost-clean-fuel-transparency": {
+    "checked": "2026-08-11",
+    "verified": "Green Hydrogen Certification Portal of India launched by Union Minister Pralhad Joshi at the MNRE National Workshop, New Delhi. Six states with notified policies, seven with hydrogen in existing frameworks, four finalising; 15 companies awarded incentives for 3,000 MW/yr electrolyser manufacturing.",
+    "sources": [
+      {
+        "title": "MNRE launches Green Hydrogen Certification Portal of India",
+        "url": "https://energetica-india.net/news/mnre-launches-green-hydrogen-certification-portal-of-india",
+        "publisher": "Energetica India",
+        "date": "18 June 2026"
+      }
+    ]
+  },
+
+  "haryana-govt-set-to-introduce-green-hydrogen-policy-soon-to-promote-clean-energy-in-state-4": {
+    "checked": "2026-08-11",
+    "verified": "Haryana Chief Secretary Anurag Rastogi said the state will introduce a Green Hydrogen Policy; follows a review of IOCL's 10,000 TPA Panipat green hydrogen plant, due for completion December 2026.",
+    "note": "Source is dated 17 March 2026; this post ran 22 July 2026.",
+    "sources": [
+      {
+        "title": "Haryana Govt set to introduce Green Hydrogen Policy soon to promote clean energy in state",
+        "url": "https://www.newsonair.gov.in/haryana-govt-set-to-introduce-green-hydrogen-policy-soon-to-promote-clean-energy-in-state",
+        "publisher": "NewsOnAir (Prasar Bharati)",
+        "date": "17 March 2026"
+      }
+    ]
+  },
+
+  "centre-approves-rs-22-crore-support-for-first-batch-of-green-hydrogen-startups": {
+    "checked": "2026-08-11",
+    "verified": "Rs 22 crore approved for nine startups, announced by Union Minister Pralhad Joshi at an MNRE National Green Hydrogen Mission workshop; part of a Rs 100 crore startup call.",
+    "note": "Source is dated 17 June 2026; this post ran 7 August 2026.",
+    "sources": [
+      {
+        "title": "Centre clears Rs 22 crore aid for startups under Green Hydrogen Mission",
+        "url": "https://www.business-standard.com/industry/news/centre-clears-22-crore-aid-for-startups-under-green-hydrogen-mission-126061701322_1.html",
+        "publisher": "Business Standard",
+        "date": "17 June 2026"
+      }
+    ]
+  },
+
+  "strain-engineered-cu3pt-catalyst-cuts-platinum-by-75-in-hydrogen-fuel-cell-cathodes": {
+    "checked": "2026-08-11",
+    "verified": "IMDEA Materials Institute; strain-engineered Cu3Pt thin film on NiTi delivers Pt-level oxygen reduction performance at 25% of the platinum loading. Underlying paper: 'The influence of elastic strains on the catalytic activity of Cu3Pt thin films for the oxygen reduction reaction', Electrochimica Acta (2026).",
+    "sources": [
+      {
+        "title": "New catalyst with 75% less platinum promises to reduce the cost of hydrogen fuel cells",
+        "url": "https://phys.org/news/2026-08-catalyst-platinum-hydrogen-fuel-cells.html",
+        "publisher": "Phys.org — on the Electrochimica Acta paper",
+        "date": "August 2026"
+      },
+      {
+        "title": "Strain-engineered Cu3Pt catalyst cuts platinum by 75% in hydrogen fuel cell cathodes",
+        "url": "https://www.hydrogenfuelnews.com/strain-engineered-cu-pt-catalyst-cuts-platinum-by-75-in-hydrogen-fuel-cell-catho/8576421/",
+        "publisher": "Hydrogen Fuel News",
+        "date": "August 2026"
+      }
+    ]
+  },
+
+  "iit-kanpur-to-set-up-centre-of-excellence-for-green-hydrogen-under-up-policy": {
+    "checked": "2026-08-11",
+    "verified": "IIT Kanpur to establish ECOGEN, a Centre of Excellence on green hydrogen, sanctioned by UPNEDA under the Uttar Pradesh Green Hydrogen Policy 2024; Principal Investigator Dr Prabodh Bajpai. Joint CoE with HBTU approved 16 December 2025.",
+    "sources": [
+      {
+        "title": "IIT Kanpur and HBTU get joint approval for Centre of Excellence for Green Hydrogen under Uttar Pradesh Policy-2024",
+        "url": "https://www.iitk.ac.in/green-energy-hydrogen-revolution",
+        "publisher": "IIT Kanpur (institutional announcement)",
+        "date": "July 2026"
+      },
+      {
+        "title": "IIT Kanpur to set up Centre of Excellence for green hydrogen research",
+        "url": "https://www.tribuneindia.com/news/uttar-pradesh/iit-kanpur-to-set-up-centre-of-excellence-for-green-hydrogen-research/",
+        "publisher": "The Tribune",
+        "date": "20 July 2026"
+      }
+    ]
+  }
+}

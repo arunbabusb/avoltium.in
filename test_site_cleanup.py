@@ -9,6 +9,10 @@ from __future__ import annotations
 
 import unittest
 
+import json
+import os
+
+import editorial_provenance
 import fix_image_credits
 import fix_internal_links
 import prune_low_value
@@ -210,6 +214,107 @@ class TestPrunePlan(unittest.TestCase):
         for field in ("id", "endpoint", "status", "title"):
             self.assertIn(field, targets[0])
         self.assertEqual(targets[0]["status"], "publish")
+
+
+class TestCitations(unittest.TestCase):
+    """Rendering verified sources into the provenance block."""
+
+    CITES = {
+        "a-post": {
+            "checked": "2026-08-11",
+            "verified": "Rs 797.17 crore, 4 MTPA.",
+            "note": "Source is dated 27 February 2026; this post ran 16 July 2026.",
+            "sources": [{"title": "Centre clears Rs 797 crore jetty",
+                         "url": "https://ddnews.gov.in/en/story/",
+                         "publisher": "DD News", "date": "27 February 2026"}],
+        },
+    }
+
+    def test_sources_render_with_publisher_and_date(self):
+        """A citation is only checkable if you can see who published it, when."""
+        out = editorial_provenance.sources_html("a-post", self.CITES)
+        self.assertIn("https://ddnews.gov.in/en/story/", out)
+        self.assertIn("DD News", out)
+        self.assertIn("27 February 2026", out)
+
+    def test_stale_dateline_note_is_surfaced(self):
+        out = editorial_provenance.sources_html("a-post", self.CITES)
+        self.assertIn("this post ran 16 July 2026", out)
+
+    def test_post_without_citations_gets_no_sources_section(self):
+        self.assertEqual(editorial_provenance.sources_html("other", self.CITES), "")
+
+    def test_cited_post_does_not_disclaim_its_own_citations(self):
+        """The generic note says these links cite nothing in particular. On a
+        post that now carries real sources that reads as a disclaimer against
+        them, so the wording has to change."""
+        block = editorial_provenance.build_block(
+            "T", "Arun", "Chief Engineer", "11 August 2026",
+            slug="a-post", citations=self.CITES)
+        self.assertIn("<h3>Sources</h3>", block)
+        self.assertNotIn("These are not citations for individual statements", block)
+
+    def test_uncited_post_keeps_the_honest_note(self):
+        block = editorial_provenance.build_block(
+            "T", "Arun", "Chief Engineer", "11 August 2026",
+            slug="other", citations=self.CITES)
+        self.assertNotIn("<h3>Sources</h3>", block)
+        self.assertIn("These are not citations for individual statements", block)
+
+    def test_urls_are_escaped(self):
+        cites = {"p": {"sources": [{"title": 'X"onclick=', "url": 'https://e.com/"x',
+                                    "publisher": "P", "date": "2026"}]}}
+        out = editorial_provenance.sources_html("p", cites)
+        self.assertNotIn('href="https://e.com/"x"', out)
+        self.assertIn("&quot;", out)
+
+    def test_a_broken_citations_file_does_not_break_the_run(self):
+        """A bad JSON file must cost citations, not the byline on 51 posts."""
+        self.assertEqual(editorial_provenance.load_citations("/nonexistent.json"), {})
+
+    def test_readme_keys_are_not_treated_as_posts(self):
+        import tempfile
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as fh:
+            json.dump({"_README": ["notes"], "real-slug": {"sources": []}}, fh)
+            path = fh.name
+        try:
+            self.assertEqual(set(editorial_provenance.load_citations(path)), {"real-slug"})
+        finally:
+            os.unlink(path)
+
+
+class TestShippedCitationsFile(unittest.TestCase):
+    """The research artifact itself, checked as data."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.data = editorial_provenance.load_citations("citations.json")
+
+    def test_file_is_present_and_populated(self):
+        self.assertGreater(len(self.data), 0)
+
+    def test_every_entry_records_what_was_verified_and_when(self):
+        """An entry without this is a URL someone guessed at."""
+        for slug, entry in self.data.items():
+            self.assertTrue(entry.get("verified"), f"{slug} records no verified claim")
+            self.assertTrue(entry.get("checked"), f"{slug} records no check date")
+
+    def test_every_source_is_complete_and_absolute(self):
+        for slug, entry in self.data.items():
+            self.assertTrue(entry.get("sources"), f"{slug} has no sources")
+            for s in entry["sources"]:
+                for field in ("title", "url", "publisher", "date"):
+                    self.assertTrue(s.get(field), f"{slug}: source missing {field}")
+                self.assertTrue(s["url"].startswith("https://"), f"{slug}: {s['url']}")
+
+    def test_no_source_is_a_bare_landing_page(self):
+        """The whole problem being fixed was citing institutional home pages.
+        A citation has to point at the item, not at the publisher."""
+        for slug, entry in self.data.items():
+            for s in entry["sources"]:
+                path = s["url"].split("//", 1)[1]
+                self.assertIn("/", path.rstrip("/"),
+                              f"{slug}: {s['url']} is a bare domain")
 
 
 if __name__ == "__main__":

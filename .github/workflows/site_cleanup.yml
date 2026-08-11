@@ -28,6 +28,7 @@ on:
           - prune-only
           - credits-only
           - links-only
+          - citations-only
 
 concurrency:
   group: site-cleanup
@@ -94,6 +95,24 @@ jobs:
             python fix_image_credits.py --execute
           else
             python fix_image_credits.py
+          fi
+
+      # Publishes the verified sources in citations.json into each post's
+      # provenance block. Runs after the prune so it does not spend a write on
+      # a post that is about to be unpublished.
+      - name: Publish verified sources
+        if: ${{ inputs.steps == 'all' || inputs.steps == 'citations-only' }}
+        env:
+          EXECUTE: ${{ inputs.execute }}
+          WP_URL: ${{ secrets.WP_URL }}
+          WP_USERNAME: ${{ secrets.WP_USERNAME }}
+          WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ "$EXECUTE" = "true" ]; then
+            python editorial_provenance.py --execute
+          else
+            python editorial_provenance.py
           fi
 
       - name: Repair internal links pointing at 404s

@@ -96,7 +96,8 @@ this site does not have.
 | `publish_image_credits.py` | `clean_caption()` so escaped markup can't be re-emitted |
 | `generate_article.py`, `rewrite_content.py` | Correct calculator slug in the injected link |
 | `fix_articles.py` | Stops "repairing" the link into a second dead URL |
-| `test_site_cleanup.py` | 26 offline tests over all of the above |
+| `citations.json` + `editorial_provenance.py` | Real per-post sources on 8 news posts |
+| `test_site_cleanup.py` | 38 offline tests over all of the above |
 | `.github/workflows/site_cleanup.yml` | Manual dispatch, dry run by default |
 
 Two of the thirteen train posts are kept: `hydrogen-train` (the 1,745-word
@@ -151,13 +152,49 @@ changes it. The duplicate cluster and the broken links are what made the
 judgement obvious and quick; they are worth fixing, and fixing them is not
 sufficient.
 
-What would change the judgement, roughly in order of impact:
+### Citations: eight posts done, the rest still to do
 
-1. **Cite specifically.** A news post should link the announcement it is
-   reporting, at the paragraph that uses it. `publish_news.py` already carries
-   source URL, publisher and timestamp through to publication — the July batch
-   predates it. Backfilling real citations onto the older posts is the single
-   highest-value editorial change available.
+The first item on this list used to read "backfill real citations." That work
+has now started rather than being recommended. `citations.json` carries
+verified primary sources for eight news posts, and
+`editorial_provenance.py` renders them as a **Sources** section above Further
+reading:
+
+| Post | Source | Verified |
+| --- | --- | --- |
+| 30 KTPA to four refineries | The India Post / ANI, 11 Aug 2026 | Full SIGHT Mode-2B split: Panipat 10, Bina 5, Vizag 5, Numaligarh 10 KTPA |
+| Paradip jetty | DD News (Prasar Bharati), 27 Feb 2026 | Rs 797.17 cr, 4 MTPA, Paradip Port Authority, 24 months |
+| Ohmium / InSolare | Ohmium press release, 28 May 2026 | 4 MW, up to 700 t/yr, NLC India, Neyveli |
+| Certification portal | Energetica India, 18 Jun 2026 | Launched by Pralhad Joshi at MNRE workshop; 3,000 MW/yr electrolyser incentives |
+| Haryana policy | NewsOnAir (Prasar Bharati), 17 Mar 2026 | Chief Secretary Anurag Rastogi; IOCL Panipat 10,000 TPA due Dec 2026 |
+| Rs 22 crore startups | Business Standard, 17 Jun 2026 | Rs 22 cr to nine startups under a Rs 100 cr call |
+| Cu₃Pt catalyst | Phys.org on *Electrochimica Acta* (2026) | IMDEA Materials; Pt-level ORR at 25% of the platinum loading |
+| IIT Kanpur CoE | IIT Kanpur / The Tribune, Jul 2026 | ECOGEN, sanctioned by UPNEDA under UP Green Hydrogen Policy 2024 |
+
+Each was checked by opening the source and confirming it carries the claim
+the post is built on. Nothing was recorded from a search snippet. The rule
+the file enforces on itself, and that the tests enforce on the file: no bare
+domains, every source carries publisher and date, every entry records what
+was verified and when.
+
+**Three of the eight turned up a second problem.** The Paradip jetty was
+announced 27 February and published here on 16 July; Haryana's policy was
+announced 17 March and published 22 July; the Rs 22 crore award was announced
+17 June and published 7 August. Those posts ran months-old announcements as
+news. The datelines are now stated in the Sources block rather than left for
+a reader to discover, but the underlying habit is worth stopping — it is
+`news_sources.py`'s `max_age_hours` doing its job only for items that come
+through the feed path.
+
+Remaining work, in order of impact:
+
+1. **Cite the other posts.** Eight of roughly 15 news posts now have sources.
+   The rest — Greenzo, BriHyNergy, the SBICAPS report, the Gujarat data centre
+   policy, the summit write-up, the weekly deal roundups — still need the same
+   treatment, and the engineering deep-dives would be stronger citing the
+   standards and papers they lean on. `publish_news.py` already carries source
+   URL, publisher and timestamp for anything published through it; this
+   backfill is for the July batch that predates it.
 2. **Publish something that is not derivable from a press release.** The
    engineering deep-dives (LCOH sensitivity, EDI vs mixed-bed polishing,
    gasket selection for alkaline stacks) are the strongest thing here and read
