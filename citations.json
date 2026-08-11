@@ -19,6 +19,35 @@
     "citation."
   ],
 
+  "_UNCITABLE": {
+    "why": [
+      "Posts researched and deliberately left without sources. Each was looked",
+      "for and each failed for a stated reason. They are recorded here so the",
+      "gap is a decision on the record rather than an oversight, and so nobody",
+      "repeats the search. Every one of them needs an editor, not a citation."
+    ],
+    "gujarat-data-centre-policy-green-hydrogen-ai-push-seen-adding-50-to-indias-solar-capacity-growth-2": {
+      "published": "2026-07-15",
+      "problem": "Calls the Viksit Gujarat Data Centre Policy 2026-29 'newly minted'. That policy was notified on 7 August 2026, three weeks after this post ran, and the headline claim of '50%+ acceleration in India's solar capacity growth' traces to nothing published. Citing the August notification here would date a source after the article that supposedly reports it.",
+      "recommend": "Rewrite against the notified policy and re-date it, or retire it."
+    },
+    "as-told-to-parliament-july-21-2026-women-constitute-over-half-of-indias-agri-workforce-centre-says": {
+      "published": "2026-07-21",
+      "problem": "The subject is women's share of the agricultural workforce. The green hydrogen content is an 'engineering insight' about farmgate green ammonia bolted onto an unrelated Parliament disclosure. Even a correct citation for the Parliament statement would not make this a green hydrogen article.",
+      "recommend": "Off-beat for this publication. Retire."
+    },
+    "clean-energy-deals-dominate-this-week-hydrogen-storage-offshore-wind-and-a-major-shell-divestiture": {
+      "published": "2026-07-22",
+      "problem": "A roundup of several unrelated transactions with no single source. Sourcing it honestly means one citation per deal, and the post does not name the deals precisely enough to find them.",
+      "recommend": "Either cite every deal individually or retire. Roundups assembled from other outlets' reporting are the format that reads most like aggregation."
+    },
+    "global-indian-green-hydrogen-news-roundup-july-2026": {
+      "published": "2026-08-07",
+      "problem": "Same as above: a monthly roundup covering many announcements, several of which are separately covered elsewhere on the site.",
+      "recommend": "Retire. Its content duplicates posts that now carry real sources."
+    }
+  },
+
   "centre-awards-30-ktpa-green-hydrogen-capacity-to-four-oil-refineries-under-national-green-hydrogen-mission": {
     "checked": "2026-08-11",
     "verified": "Total 30 KTPA under SIGHT Mode-2B: IOCL Panipat 10 KTPA, BPCL Bina 5 KTPA, HPCL Vizag 5 KTPA, Numaligarh Refineries 10 KTPA.",
@@ -121,6 +150,64 @@
         "url": "https://www.hydrogenfuelnews.com/strain-engineered-cu-pt-catalyst-cuts-platinum-by-75-in-hydrogen-fuel-cell-catho/8576421/",
         "publisher": "Hydrogen Fuel News",
         "date": "August 2026"
+      }
+    ]
+  },
+
+  "greenzo-energy-builds-indias-green-hydrogen-manufacturing-base": {
+    "checked": "2026-08-11",
+    "verified": "250 MW annual electrolyser manufacturing capacity; order book approximately Rs 1,800 crore; single-stack alkaline electrolysers from 0.5 MW to 5 MW.",
+    "sources": [
+      {
+        "title": "Greenzo Energy builds India's green hydrogen manufacturing base",
+        "url": "https://unlistedzone.com/greenzo-energy-green-hydrogen-250mw-manufacturing-order-book-india",
+        "publisher": "UnlistedZone",
+        "date": "21 July 2026"
+      }
+    ]
+  },
+
+  "indias-green-hydrogen-mission-gains-momentum-despite-capacity-and-infrastructure-challenges-sbicaps-report": {
+    "checked": "2026-08-11",
+    "verified": "SBICAPS: 2030 target 5 MTPA against under 10 KTPA operational; SIGHT scheme INR 175 bn, of which INR 44.4 bn for electrolyser manufacturing and INR 130.5 bn for production, about 55% allocated; 1.2 MTPA auctioned acts as a ceiling for 2030 output.",
+    "sources": [
+      {
+        "title": "India's 2030 target of 5 mtpa green hydrogen capacity remains distant with only 10 ktpa operational: SBICAPS",
+        "url": "https://www.pv-magazine-india.com/2026/07/22/indias-2030-target-of-5-mtpa-green-hydrogen-capacity-remains-distant-with-only-10-ktpa-operational-sbicaps/",
+        "publisher": "pv magazine India",
+        "date": "22 July 2026"
+      }
+    ]
+  },
+
+  "brihynergy-ships-15mw-pem-hydrogen-system": {
+    "checked": "2026-08-11",
+    "verified": "15 MW shipped to a project in Romania as three 5 MW systems of 1,000 Nm3/h each, using BriLyzer R-Series PEM stacks. Facts confirmed on the Hydrogen Central write-up; Fuel Cells Works carried the story first, on 20 July, which is the report that predates this post.",
+    "sources": [
+      {
+        "title": "BriHyNergy ships 15MW PEM hydrogen production system to Europe",
+        "url": "https://fuelcellsworks.com/2026/07/20/fuel-cells/brihynergy-ships-15mw-pem-hydrogen-production-system-to-europe-advancing-large-scale-green-hydrogen-deployment",
+        "publisher": "Fuel Cells Works",
+        "date": "20 July 2026"
+      },
+      {
+        "title": "BriHyNergy ships 15MW PEM hydrogen production system to Europe, advancing large-scale green hydrogen deployment",
+        "url": "https://hydrogen-central.com/brihynergy-ships-15mw-pem-hydrogen-production-system-to-europe-advancing-large-scale-green-hydrogen-deployment/",
+        "publisher": "Hydrogen Central",
+        "date": "23 July 2026"
+      }
+    ]
+  },
+
+  "experts-discuss-strategies-to-build-indias-domestic-green-hydrogen-market-at-global-hydrogen-renewable-energy-summit-2025": {
+    "checked": "2026-08-11",
+    "verified": "Global Hydrogen & Renewable Energy Summit 2025, held 12-13 March 2025 in Kochi, Kerala. Strategies reported: hydrogen valleys, cost reduction through R&D, safety regulation across the value chain, localised applications in chemicals, refineries, fertilisers and mobility, and public-private collaboration.",
+    "sources": [
+      {
+        "title": "Experts discuss strategies to build India's domestic green hydrogen market at Global Hydrogen & Renewable Energy Summit 2025",
+        "url": "https://egov.eletsonline.com/2026/07/experts-discuss-strategies-to-build-indias-domestic-green-hydrogen-market-at-global-hydrogen-renewable-energy-summit-2025/",
+        "publisher": "Elets eGov",
+        "date": "16 July 2026"
       }
     ]
   },

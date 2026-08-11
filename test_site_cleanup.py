@@ -394,6 +394,28 @@ class TestShippedCitationsFile(unittest.TestCase):
                     self.assertTrue(s.get(field), f"{slug}: source missing {field}")
                 self.assertTrue(s["url"].startswith("https://"), f"{slug}: {s['url']}")
 
+    def test_uncitable_posts_are_recorded_with_a_reason(self):
+        """A post left uncited should be a decision on the record, not a gap."""
+        with open("citations.json") as fh:
+            raw = json.load(fh)
+        entries = {k: v for k, v in raw["_UNCITABLE"].items() if k != "why"}
+        self.assertTrue(entries)
+        for slug, entry in entries.items():
+            self.assertTrue(entry.get("problem"), f"{slug} states no problem")
+            self.assertTrue(entry.get("recommend"), f"{slug} recommends nothing")
+
+    def test_a_post_is_never_both_cited_and_uncitable(self):
+        with open("citations.json") as fh:
+            raw = json.load(fh)
+        uncitable = {k for k in raw["_UNCITABLE"] if k != "why"}
+        self.assertFalse(uncitable & set(self.data))
+
+    def test_underscore_sections_never_reach_the_renderer(self):
+        """_UNCITABLE is documentation; rendering it as a post's sources would
+        put an editorial note on a live page."""
+        self.assertNotIn("_UNCITABLE", self.data)
+        self.assertNotIn("_README", self.data)
+
     def test_no_source_is_a_bare_landing_page(self):
         """The whole problem being fixed was citing institutional home pages.
         A citation has to point at the item, not at the publisher."""
