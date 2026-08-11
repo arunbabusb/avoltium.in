@@ -263,8 +263,15 @@ def process(post_id: int, mode: str, backup: dict, backup_path: str) -> bool:
     original = data["content"]["raw"]
     print(f"  [{mode}] {title[:65]}", flush=True)
 
-    backup[str(post_id)] = {"title": title, "content": original}
-    save_backup(backup, backup_path)
+    # Only ever record a post the first time it is seen. On a second default
+    # run the post has already been rewritten, so `original` here is the
+    # rewritten body — storing it would replace the only copy of the true
+    # original with the very thing the backup exists to undo.
+    if str(post_id) in backup:
+        print("  original already backed up; keeping the stored copy", flush=True)
+    else:
+        backup[str(post_id)] = {"title": title, "content": original}
+        save_backup(backup, backup_path)
 
     generated = call_gemini(build_prompt(title, original, mode))
     if not generated:
@@ -338,6 +345,18 @@ def main() -> None:
     # holding the true pre-rewrite originals.
     backup_name = f"content_backup_retry_{'_'.join(str(p) for p, _ in targets)}.json" \
         if retry_raw else "content_backup.json"
+
+    # Start from what is already on disk. A default rerun would otherwise begin
+    # with an empty dict and overwrite the file containing the true originals.
+    if os.path.exists(backup_name):
+        try:
+            with open(backup_name, encoding="utf-8") as fh:
+                backup.update(json.load(fh))
+            print(f"Loaded {len(backup)} existing original(s) from {backup_name}", flush=True)
+        except (OSError, ValueError) as exc:
+            print(f"ERROR: {backup_name} exists but could not be read ({exc}). "
+                  f"Refusing to run — move it aside if it is not needed.", flush=True)
+            return
 
     print(f"Processing {len(targets)} posts\n", flush=True)
     for pid, mode in targets:

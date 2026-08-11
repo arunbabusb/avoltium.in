@@ -254,10 +254,17 @@ def find_page(s: requests.Session, slug: str):
     outcomes meant a transient 500 read as "no such page", and the caller
     published a second page on a slug that already had one.
     """
-    r = s.get(PAGES_READ, params={"slug": slug, "status": "publish,draft"}, timeout=30)
-    if r.status_code != 200:
-        raise LookupFailed(f"/{slug}: HTTP {r.status_code}")
-    items = r.json()
+    try:
+        r = s.get(PAGES_READ, params={"slug": slug, "status": "publish,draft"}, timeout=30)
+        if r.status_code != 200:
+            raise LookupFailed(f"/{slug}: HTTP {r.status_code}")
+        items = r.json()
+    except requests.RequestException as exc:
+        # A timeout or a dropped connection is a failed lookup, not an absent
+        # page, and it must reach main as one rather than as a traceback.
+        raise LookupFailed(f"/{slug}: {type(exc).__name__}: {exc}") from exc
+    except ValueError as exc:
+        raise LookupFailed(f"/{slug}: response was not JSON ({exc})") from exc
     if not isinstance(items, list):
         raise LookupFailed(f"/{slug}: expected a list, got {type(items).__name__}")
     return items[0] if items else None

@@ -28,6 +28,7 @@ import logging
 import os
 import re
 import sys
+import urllib.parse
 
 import requests
 
@@ -50,9 +51,38 @@ MEDIA_READ = f"{WP_URL}/wp-json/wp/v2/media"
 # whole body is held in memory before it is decoded.
 MAX_DOWNLOAD_BYTES = 40 * 1024 * 1024
 
+# A byte limit does not bound memory: a highly compressible image decodes to
+# width * height * 3 bytes however small the file was. Pillow warns past its
+# own default and only raises at twice that, so set an explicit ceiling. A
+# 60-megapixel photograph is far larger than anything this site publishes.
+MAX_IMAGE_PIXELS = 60_000_000
+
+# The URL comes from a third-party search response, and requests follows
+# redirects by default, so without this the host can be pointed at anything
+# reachable from the machine — including link-local metadata endpoints.
+ALLOWED_IMAGE_HOSTS = (
+    "upload.wikimedia.org",
+    "commons.wikimedia.org",
+    "api.openverse.org",
+    "openverse.org",
+)
+
+
+def _host_allowed(url: str) -> bool:
+    """Whether `url` is https on one of the hosts images may come from."""
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme != "https":
+        return False
+    host = (parsed.hostname or "").lower()
+    return any(host == h or host.endswith("." + h) for h in ALLOWED_IMAGE_HOSTS)
+
 
 class FetchError(RuntimeError):
-    """A page of results could not be read, so the list on hand is incomplete."""
+    """A remote read failed or returned something unusable.
+
+    Raised both when a page of results cannot be read — leaving the list on
+    hand incomplete — and when a candidate image is rejected.
+    """
 
 
 def download_image(url: str, user_agent: str, timeout: int = 90) -> bytes:
@@ -66,8 +96,15 @@ def download_image(url: str, user_agent: str, timeout: int = 90) -> bytes:
 
     Raises FetchError on anything that is not a decodable image.
     """
-    with requests.get(url, timeout=timeout, stream=True,
+    if not _host_allowed(url):
+        raise FetchError(f"host not in the image allowlist: {url[:80]}")
+    # allow_redirects=False because a 302 to an internal address would be
+    # followed before any of the checks above could see the new URL.
+    with requests.get(url, timeout=timeout, stream=True, allow_redirects=False,
                       headers={"User-Agent": user_agent}) as r:
+        if r.is_redirect or r.is_permanent_redirect:
+            raise FetchError(f"refused to follow a redirect to "
+                             f"{r.headers.get('Location', '?')[:80]}")
         if r.status_code != 200:
             raise FetchError(f"HTTP {r.status_code}")
         chunks, total = [], 0
@@ -84,10 +121,22 @@ def download_image(url: str, user_agent: str, timeout: int = 90) -> bytes:
 
 
 def verify_image(data: bytes) -> None:
-    """Raise FetchError unless Pillow can decode `data` as an image."""
+    """Raise FetchError unless `data` is a decodable image of sane dimensions.
+
+    The size check happens before verify() and before anything calls
+    convert("RGB"), because the header is enough to know the dimensions and
+    the decode is what would allocate the memory.
+    """
     from PIL import Image as _Image
     try:
-        _Image.open(io.BytesIO(data)).verify()
+        im = _Image.open(io.BytesIO(data))
+        pixels = im.width * im.height
+        if pixels > MAX_IMAGE_PIXELS:
+            raise FetchError(f"{im.width}x{im.height} is {pixels / 1e6:.0f} MP, "
+                             f"over the {MAX_IMAGE_PIXELS / 1e6:.0f} MP limit")
+        im.verify()
+    except FetchError:
+        raise
     except Exception as exc:
         raise FetchError(f"not a decodable image ({exc})") from exc
 

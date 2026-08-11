@@ -85,21 +85,32 @@ add_action('rest_api_init', function () {
         'methods'  => 'POST',
         'permission_callback' => function () { return current_user_can('manage_options'); },
         'callback' => function ($req) {
+            global $wpdb;
             $body = $req->get_json_params();
             $done = [];
+            $failed = [];
             foreach (($body['templates'] ?? []) as $id => $content) {
                 $id = (int) $id;
-                if (get_post_type($id) !== 'tdb_templates') { continue; }
+                if (get_post_type($id) !== 'tdb_templates') {
+                    $failed[] = ['id' => $id, 'why' => 'not a tdb_templates row'];
+                    continue;
+                }
                 // wp_update_post runs the content through kses for some roles
                 // and would strip the shortcodes; write the column directly.
-                global $wpdb;
-                $wpdb->update($wpdb->posts, ['post_content' => $content], ['ID' => $id]);
+                // update() returns false on error and 0 when nothing changed;
+                // only false is a failure, since a no-op means the row already
+                // holds this exact content.
+                $res = $wpdb->update($wpdb->posts, ['post_content' => $content], ['ID' => $id]);
+                if ($res === false) {
+                    $failed[] = ['id' => $id, 'why' => $wpdb->last_error ?: 'update failed'];
+                    continue;
+                }
                 clean_post_cache($id);
                 $done[] = $id;
             }
             // tagDiv compiles template CSS on save; drop it so it regenerates.
             delete_option('td_011_generated_css');
-            return ['updated' => $done];
+            return ['updated' => $done, 'failed' => $failed];
         },
     ]);
 }, 20);
@@ -127,6 +138,13 @@ def install_snippet(auth) -> None:
         raise SystemExit(f"snippet install failed: HTTP {r.status_code} — {r.text[:200]}")
 
 
+def endpoint_available(auth) -> bool:
+    """Whether the read route is already installed, without installing it."""
+    r = requests.get(f"{WP_URL}/wp-json/av/v1/templates", auth=auth, timeout=60,
+                     headers=H, params={"_ts": time.time()})
+    return r.status_code == 200
+
+
 def purge(auth) -> None:
     """Drop the page cache so the next read reflects what was just written."""
     requests.post(f"{WP_URL}/wp-json/av/v1/purge", auth=auth, timeout=90, headers=H)
@@ -146,12 +164,24 @@ def read_templates(auth) -> dict:
 
 
 def write_templates(auth, updates: dict) -> list:
-    """Write {id: content} back. Returns the ids WordPress reports it saved."""
+    """Write {id: content} back. Returns the ids WordPress reports it saved.
+
+    Exits if any requested template did not save. A partial rewrite is the
+    worst outcome available here — some templates carrying the banner and
+    some not, with the run having reported success.
+    """
     r = requests.post(f"{WP_URL}/wp-json/av/v1/templates", auth=auth, timeout=120,
                       headers=H, json={"templates": updates})
     if r.status_code != 200:
         raise SystemExit(f"write failed: HTTP {r.status_code} — {r.text[:200]}")
-    return r.json().get("updated", [])
+    body = r.json()
+    updated, failed = body.get("updated", []), body.get("failed", [])
+    missing = set(map(int, updates)) - set(map(int, updated))
+    if failed or missing:
+        raise SystemExit(f"only {len(updated)} of {len(updates)} template(s) saved — "
+                         f"failed={failed} missing={sorted(missing)}. "
+                         f"Run --restore to put the originals back.")
+    return updated
 
 
 def main() -> int:
@@ -163,8 +193,17 @@ def main() -> int:
     args = ap.parse_args()
 
     auth = session().auth
-    install_snippet(auth)
-    purge(auth)
+    # Installing the endpoint is itself a write, so the modes documented as
+    # non-mutating must not do it. Reading templates needs the GET route, so a
+    # dry run uses it if it is already there and says so plainly if not.
+    if args.execute or args.restore:
+        install_snippet(auth)
+        purge(auth)
+    elif not endpoint_available(auth):
+        logger.error("The read endpoint is not installed, and installing it would "
+                     "write to the site — which this mode does not do. Re-run with "
+                     "--execute, which installs it and removes the ad boxes.")
+        return 2
 
     if args.restore:
         if not BACKUP.exists():
@@ -207,6 +246,11 @@ def main() -> int:
     # Prove it against the live page rather than trusting the write.
     time.sleep(6)
     page = requests.get(f"{WP_URL}/green-hydrogen-explained/", timeout=60, headers=H)
+    if page.status_code != 200:
+        # An error page contains no "custom-rec" either, which would read as a
+        # clean result. Not being able to check is not the same as passing.
+        logger.error("could not verify: the check page returned HTTP %s", page.status_code)
+        return 1
     hits = page.text.count("custom-rec")
     logger.info("live single post now references custom-rec %d time(s)", hits)
     return 0 if hits == 0 else 1
