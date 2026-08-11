@@ -232,29 +232,23 @@ html body .td-post-content li {
     html body .td-post-content li { font-size: 17px !important; }
 }
 
-/* --------------------------------------------------------------------------
-   6. Remove the leftover theme demo ad spot
-   The Newspaper demo content ships a "The news you need — now available from
-   your pocket" banner with App Store and Google Play badges, rendered as a
-   tagDiv ad spot (.td-a-rec) pointing at custom-rec.jpg / custom-rec-2.jpg
-   with href="#" and alt="spot_img". It advertises an app that does not exist
-   and links nowhere, on category pages and single posts.
+/* -----------------------------------------------------------------------/* --------------------------------------------------------------------------
+   6. The leftover theme demo ad banner — removed at source, not hidden here
 
-   Matched on the image rather than the block id: tagDiv regenerates .tdi_NN
-   whenever a template is re-saved, so .tdi_61 would silently stop matching.
-   :has() collapses the whole spot so no gap is left; the rule after it is the
-   fallback for engines without :has(), which hides the banner even though the
-   empty container remains.
+   The Newspaper demo content shipped a "now available from your pocket"
+   banner with App Store and Google Play badges, advertising an app that does
+   not exist and linking to href="#". This section used to hide it with
+   :has(). It no longer needs to, and the note it carried was wrong: it said
+   to delete the spot in Newspaper -> Theme Panel -> Ad Spots.
 
-   This is a display fix. The permanent removal is to delete the ad spot in
-   Newspaper → Theme Panel → Ad Spots, which also stops the image downloading.
+   It was never a Theme Panel ad spot. Every slot in that panel is empty. It
+   was a [td_block_ad_box spot_img_all="48"] element inside six tagDiv Cloud
+   Templates — Single, Category, Author, Search, Date and Tag — which is why
+   it appeared on articles and on every archive page. The block referenced the
+   image by attachment id, so searching the database for the filename found
+   only the two media rows and nothing that pointed at them.
+
+   remove_demo_adspots.py strips the element from all six templates and can
+   put them back from tdb_templates_backup.json. Hiding it in CSS still cost
+   the reader the image download; deleting it does not.
    -------------------------------------------------------------------------- */
-.td-a-rec:has(img[src*="custom-rec"]),
-.td-a-rec:has(img[alt="spot_img"]) {
-    display: none !important;
-}
-
-.td-a-rec img[src*="custom-rec"],
-.td-a-rec img[alt="spot_img"] {
-    display: none !important;
-}
