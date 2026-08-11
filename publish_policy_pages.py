@@ -93,6 +93,11 @@ Location: <strong>{location}</strong></p>
 <li><strong>Advertising.</strong> Pages carry Google AdSense. Advertisers have
 no involvement in what is written and no sight of articles before they
 publish.</li>
+<li><strong>Reader contributions.</strong> Readers can contribute through
+Google's Reader Revenue Manager. Contributing changes nothing about what you
+can read: every article is free, there is no paywall and no article is held
+back for contributors. It does not buy influence over coverage either — a
+contributor gets the same article as everyone else.</li>
 <li><strong>Tools.</strong> The site hosts free engineering calculators. Where
 any paid product is offered it is identified as ours on the page itself.</li>
 </ul>
