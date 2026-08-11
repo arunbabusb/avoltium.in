@@ -42,6 +42,13 @@ jobs:
       - name: Install dependencies
         run: pip install requests pillow python-dotenv
 
+      # Selection decides what goes out under the site's name, so it is
+      # checked before the run rather than after. Offline assertions only —
+      # they need no network, so a flaky wire service cannot block the
+      # morning's publish, and a broken filter cannot reach a live post.
+      - name: Check the selection rules before publishing
+        run: python -m unittest test_news_sources -v
+
       - name: Show what the feeds are offering
         run: python news_sources.py
 
