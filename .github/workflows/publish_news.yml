@@ -40,7 +40,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: pip install requests pillow python-dotenv
+        run: pip install --quiet -r requirements.txt
 
       # Selection decides what goes out under the site's name, so it is
       # checked before the run rather than after. Offline assertions only —
