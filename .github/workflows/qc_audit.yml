@@ -19,7 +19,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install requests python-dotenv
+        run: pip install --quiet -r requirements.txt
 
       # Fails the run when any BLOCKER is found, so the Actions tab shows red
       # and the details are in the log.

@@ -22,7 +22,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install requests python-dotenv
+        run: pip install --quiet -r requirements.txt
 
       # Exits non-zero when a draft is still held, so a post that needs an
       # editor shows red instead of passing silently.

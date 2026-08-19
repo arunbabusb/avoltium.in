@@ -53,6 +53,13 @@ def php_wrapper(css: str) -> str:
     return (
         "add_action('wp_head', function () {\n"
         "    echo <<<'AVCSS'\n"
+        # The stylesheet's @font-face rules pull two woff2 files from
+        # fonts.gstatic.com. Without a preconnect the browser only discovers
+        # that origin after it has parsed this <style>, and then pays DNS, TCP
+        # and TLS before the first byte of the font. crossorigin is required:
+        # fonts are fetched in CORS mode, and a preconnect opened without it
+        # is a separate connection the font request cannot reuse.
+        '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>\n'
         '<style id="av-readability">\n'
         f"{css}\n"
         "</style>\n"

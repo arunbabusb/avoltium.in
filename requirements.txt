@@ -1,3 +1,9 @@
 requests
 python-dotenv
 Pillow>=10.0.0
+# news_sources.py parses RSS from feeds we do not control. It falls back to the
+# stdlib parser when this is missing, and that fallback is not equivalent: the
+# stdlib parser is still open to the entity-expansion attacks defusedxml exists
+# to block. It was absent from every workflow's install line, so the fallback is
+# the path that actually ran, daily, on untrusted remote XML.
+defusedxml
