@@ -6,57 +6,116 @@ article run died, twice, because nothing in the chain was real enough to fall
 through to. These cover the rescue, and equally that the rescue stays out of
 the way when it is not needed.
 """
-import sys, types, json
+import pytest
+
 import resilient as R
 
-class Res:
-    def __init__(self, code, payload=None): self.status_code=code; self._p=payload or {}
-    def json(self): return self._p
 
-LISTING = {"models":[
-    {"name":"models/gemini-2.5-flash","supportedGenerationMethods":["generateContent"]},
-    {"name":"models/gemini-2.5-pro","supportedGenerationMethods":["generateContent"]},
-    {"name":"models/gemini-2.5-flash-preview","supportedGenerationMethods":["generateContent"]},
-    {"name":"models/text-embedding-004","supportedGenerationMethods":["embedContent"]},
-]}
-OK = {"candidates":[{"content":{"parts":[{"text":"ARTICLE BODY"}]}}]}
+class FakeResponse:
+    def __init__(self, status_code, payload=None):
+        self.status_code = status_code
+        self._payload = payload or {}
 
-def scenario(name, handler, expect_text):
-    R._discovered_models = None
-    calls=[]
-    def fake(method, url, **kw):
-        calls.append(url.split('/v1beta/')[1].split('?')[0])
-        return handler(url)
-    R.request_with_retry = fake
+    def json(self):
+        return self._payload
+
+
+LISTING = {
+    "models": [
+        {"name": "models/gemini-2.5-flash", "supportedGenerationMethods": ["generateContent"]},
+        {"name": "models/gemini-2.5-pro", "supportedGenerationMethods": ["generateContent"]},
+        {"name": "models/gemini-2.5-flash-preview", "supportedGenerationMethods": ["generateContent"]},
+        # Embedding models cannot generate and must not enter the chain.
+        {"name": "models/text-embedding-004", "supportedGenerationMethods": ["embedContent"]},
+    ]
+}
+GENERATED = {"candidates": [{"content": {"parts": [{"text": "ARTICLE BODY"}]}}]}
+
+IS_LISTING = "/v1beta/models?key="
+
+
+@pytest.fixture
+def transport(monkeypatch):
+    """Swap the HTTP layer for a stub and record which endpoints were called."""
+    calls: list[str] = []
+
+    def install(handler):
+        def fake(method, url, **kwargs):
+            calls.append(url.split("/v1beta/")[1].split("?")[0])
+            return handler(url)
+
+        monkeypatch.setattr(R, "request_with_retry", fake)
+        return calls
+
+    # Discovery caches for the life of the process; each test needs a clean one.
+    monkeypatch.setattr(R, "_discovered_models", None)
+    return install
+
+
+def test_discovery_rescues_a_chain_that_has_entirely_failed(transport):
+    """The outage itself: 503 on the only real model, 404 on the other two."""
+
+    def handler(url):
+        if IS_LISTING in url:
+            return FakeResponse(200, LISTING)
+        if "gemini-flash-latest" in url:
+            return FakeResponse(503)
+        if "gemini-2.0-flash" in url:
+            return FakeResponse(404)
+        if "gemini-2.5-flash:" in url:
+            return FakeResponse(200, GENERATED)
+        return FakeResponse(404)
+
+    calls = transport(handler)
     text, model = R.gemini_generate("KEY", "prompt")
-    ok = (text == expect_text)
-    print(f"{'PASS' if ok else 'FAIL'}  {name}")
-    print(f"       -> text={text!r} model={model!r}")
-    print(f"       -> calls: {calls}")
-    return ok
 
-# 1. The actual outage: flash-latest 503, the two 2.0 names 404, discovery works.
-def outage(url):
-    if url.endswith("models?key=KEY"): return Res(200, LISTING)
-    if "gemini-flash-latest" in url: return Res(503)
-    if "gemini-2.0-flash" in url: return Res(404)
-    if "gemini-2.5-flash:" in url: return Res(200, OK)
-    return Res(404)
+    assert text == "ARTICLE BODY"
+    assert model == "gemini-2.5-flash", "should land on the cheapest discovered model"
+    assert "models" in calls, "discovery must have been consulted"
 
-# 2. Happy path unchanged: first model answers, discovery never called.
-def happy(url):
-    if url.endswith("models?key=KEY"): raise AssertionError("discovery must not run")
-    return Res(200, OK)
 
-# 3. Discovery itself down -> behaves exactly as before (returns None).
-def no_discovery(url):
-    if url.endswith("models?key=KEY"): return Res(500)
-    return Res(503)
+def test_discovery_prefers_flash_and_deprioritises_previews():
+    """Ranking is cheapest-first, with the withdrawable builds last."""
+    ranked = sorted(
+        ["gemini-2.5-pro", "gemini-2.5-flash-preview", "gemini-2.5-flash"],
+        key=lambda n: (0 if "flash" in n else 1 if "pro" in n else 2,
+                       any(t in n for t in ("preview", "exp", "thinking")),
+                       len(n)),
+    )
+    assert ranked == ["gemini-2.5-flash", "gemini-2.5-flash-preview", "gemini-2.5-pro"]
 
-results = [
-    scenario("outage: configured chain all-fail, discovery rescues", outage, "ARTICLE BODY"),
-    scenario("happy path: first model answers, no discovery call", happy, "ARTICLE BODY"),
-    scenario("discovery unavailable: fails cleanly like before", no_discovery, None),
-]
-print("\nALL PASS" if all(results) else "\nFAILURES PRESENT")
-sys.exit(0 if all(results) else 1)
+
+def test_healthy_run_never_calls_discovery(transport):
+    """A working first model must cost exactly one request, as before."""
+
+    def handler(url):
+        assert IS_LISTING not in url, "discovery ran on a healthy chain"
+        return FakeResponse(200, GENERATED)
+
+    calls = transport(handler)
+    text, model = R.gemini_generate("KEY", "prompt")
+
+    assert (text, model) == ("ARTICLE BODY", "gemini-flash-latest")
+    assert calls == ["models/gemini-flash-latest:generateContent"]
+
+
+def test_discovery_being_down_is_not_a_new_failure_mode(transport):
+    """Losing discovery leaves exactly the old behaviour: (None, None)."""
+
+    def handler(url):
+        return FakeResponse(500) if IS_LISTING in url else FakeResponse(503)
+
+    transport(handler)
+    assert R.gemini_generate("KEY", "prompt") == (None, None)
+
+
+def test_embedding_models_are_excluded_from_discovery(transport):
+    """A model that cannot generateContent must never enter the chain."""
+
+    def handler(url):
+        if IS_LISTING in url:
+            return FakeResponse(200, LISTING)
+        return FakeResponse(503)
+
+    transport(handler)
+    assert "text-embedding-004" not in R.discover_gemini_models("KEY")
