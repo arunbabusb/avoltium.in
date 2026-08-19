@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "avoltium-wp": {
+      "type": "http",
+      "url": "https://www.avoltium.in/wp-json/mcp/mcp-adapter-default-server",
+      "headers": {
+        "Authorization": "Basic ${WP_MCP_BASIC}"
+      }
+    }
+  }
+}
