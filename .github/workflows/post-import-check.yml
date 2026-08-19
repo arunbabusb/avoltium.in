@@ -1,0 +1,37 @@
+name: Post-import check
+
+permissions:
+  contents: read
+
+# Manual only, and read-only. Run it once before a tagDiv demo/layout import to
+# capture a baseline, and again afterwards to see what the import changed.
+on:
+  workflow_dispatch:
+    inputs:
+      article:
+        description: 'Article URL to check (blank = home page)'
+        type: string
+        required: false
+        default: ''
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install --quiet -r requirements.txt
+      - name: Check the import did not undo anything
+        env:
+          WP_URL: ${{ secrets.WP_URL }}
+          WP_USERNAME: ${{ secrets.WP_USERNAME }}
+          WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
+        run: |
+          if [ -n "${{ inputs.article }}" ]; then
+            python3 post_import_check.py --article "${{ inputs.article }}"
+          else
+            python3 post_import_check.py
+          fi
