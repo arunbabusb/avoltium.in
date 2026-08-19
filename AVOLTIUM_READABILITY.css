@@ -364,19 +364,37 @@ html body .td-post-content li {
 .av-disclosure,
 .td-post-content figcaption { color: #5a6675 !important; }
 
-@media (prefers-color-scheme: dark) {
-    /* The theme ships its own dark handling; only fix contrast, do not
-       repaint surfaces we do not own. */
-    .td-post-content,
-    .td-post-content p,
-    .td-post-content li { color: #e6eaf0 !important; }
-    .image-credit,
-    .av-reviewed,
-    .av-fr-note,
-    .av-disclosure { color: #b3bdcc !important; }
-    .td-post-content p a,
-    .td-post-content li a { color: #7cc4ec !important; }
-}
+/* There is no dark-mode block here any more, and there must not be one.
+
+   This file used to carry a `@media (prefers-color-scheme: dark)` rule that
+   repainted body copy to #e6eaf0, under a comment claiming "the theme ships
+   its own dark handling". It does not. Grepping every stylesheet the site
+   actually serves — the five compiled files under wp-content/litespeed/css/ —
+   finds `prefers-color-scheme` exactly zero times. The only occurrence
+   anywhere in the delivered page was the one in this stylesheet.
+
+   So for every reader whose operating system is set to dark, the theme kept
+   its white background and this file turned the text on top of it near-white.
+   Body copy on the articles was white on white. Invisible.
+
+   The rule's own selector list is why the symptom looked like a font problem
+   rather than a blank page: it named .td-post-content, p and li, and left
+   headings and <strong> out. Those kept their #0f172a and stayed perfectly
+   readable, so an article rendered as a set of visible headings and bold
+   run-in labels with nothing legible between them.
+
+   The same shape of failure appears from the other direction under Chrome's
+   "Auto Dark Mode for Web Contents" and under the dark-mode extensions: those
+   darken the background without setting prefers-color-scheme, so this block
+   does not fire, and the page ends up with #1c222b body text on a dark
+   surface — headings and bold again surviving, body copy again gone.
+
+   The honest fix for both is to stop half-theming a light-only site. The
+   declaration below states what the site is, which is also what stops a
+   browser deciding to invert it on the reader's behalf. If avoltium.in ever
+   wants a real dark mode it belongs in the theme, where the backgrounds are,
+   not in a contrast patch that can only reach the text. */
+:root { color-scheme: only light; }
 
 /* The theme steps body copy down to 15px between 768px and 1018px. Hold the
    line there too, or the tablet read is smaller than the phone read. */
