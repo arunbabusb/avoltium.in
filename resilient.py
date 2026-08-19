@@ -28,13 +28,75 @@ import requests
 # just burns the schedule window.
 RETRYABLE_STATUS = frozenset({408, 429, 500, 502, 503, 504})
 
-# Ordered by what actually answered. gemini-flash-latest is the one that
-# produced every article in the 2026-08-11 run; gemini-2.0-flash failed
-# instantly and non-retryably on all three, which is the signature of a model
-# name the endpoint does not serve rather than a busy one. It stays in the
-# chain as a fallback but no longer costs a wasted call in front of the model
-# that works.
+# Preference order, not a guarantee: these names are tried first and any that
+# the endpoint no longer serves is skipped after one 404. gemini-2.0-flash and
+# gemini-2.0-flash-lite are kept here only because they cost one call each to
+# rule out, and discovery (below) is what actually supplies the fallback.
+#
+# They were previously described as "a fallback". They were not. Both answer
+# 404 — the endpoint does not serve those names — which left gemini-flash-latest
+# as the only working model in a three-model chain. On 2026-08-19 that model
+# returned 503 (Google busy, nothing to do with us) and the whole article run
+# died behind it, twice, because there was nothing real behind it to fall to.
 DEFAULT_GEMINI_MODELS = ["gemini-flash-latest", "gemini-2.0-flash", "gemini-2.0-flash-lite"]
+
+# Resolved once per run by discover_gemini_models().
+_discovered_models: list[str] | None = None
+
+
+def discover_gemini_models(api_key: str, timeout: int = 30) -> list[str]:
+    """Model names the endpoint actually serves, best first.
+
+    A hardcoded model list rots: names are retired, and the failure it
+    produces is a 404 on every call with no hint at what to use instead. This
+    asks the API what exists rather than guessing, so a retired name costs one
+    run at most instead of every run until someone reads the logs.
+
+    Ranked cheapest-and-fastest first — flash ahead of pro — with previews and
+    experimental builds last, since they are the ones most likely to be
+    withdrawn. Returns [] when discovery itself fails, which leaves the
+    configured chain as the only behaviour and is exactly what happened before
+    this existed.
+    """
+    global _discovered_models
+    if _discovered_models is not None:
+        return _discovered_models
+
+    res = request_with_retry(
+        "GET",
+        f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}",
+        attempts=2,
+        label="gemini/ListModels",
+        timeout=timeout,
+    )
+    if res is None or res.status_code != 200:
+        why = "no response" if res is None else f"HTTP {res.status_code}"
+        print(f"  model discovery unavailable ({why}); using the configured chain only.",
+              flush=True)
+        _discovered_models = []
+        return _discovered_models
+
+    try:
+        served = res.json().get("models", [])
+    except ValueError:
+        _discovered_models = []
+        return _discovered_models
+
+    names = [
+        m["name"].split("/", 1)[-1]
+        for m in served
+        if "generateContent" in m.get("supportedGenerationMethods", [])
+    ]
+
+    def rank(name: str) -> tuple:
+        family = 0 if "flash" in name else 1 if "pro" in name else 2
+        unstable = any(t in name for t in ("preview", "exp", "thinking"))
+        return (family, unstable, len(name))
+
+    names.sort(key=rank)
+    _discovered_models = names
+    print(f"  discovered {len(names)} usable model(s); first: {names[:3]}", flush=True)
+    return names
 
 
 def sleep_backoff(attempt: int, base: float = 2.0, cap: float = 30.0) -> None:
@@ -99,7 +161,26 @@ def gemini_generate(
     span tens of seconds instead of milliseconds — long enough for a
     short-lived quota window to reopen.
     """
-    for model in models or DEFAULT_GEMINI_MODELS:
+    chain = list(models or DEFAULT_GEMINI_MODELS)
+    tried: set[str] = set()
+    discovered_appended = False
+
+    while True:
+        if not chain:
+            # The configured chain is spent. Before giving up, ask the endpoint
+            # what it serves — a chain that has rotted into all-404s is exactly
+            # the case worth surviving, and it is invisible from here otherwise.
+            if discovered_appended:
+                break
+            discovered_appended = True
+            chain = [m for m in discover_gemini_models(api_key, timeout=timeout)
+                     if m not in tried]
+            if not chain:
+                break
+            print("  configured models exhausted; trying discovered models.", flush=True)
+
+        model = chain.pop(0)
+        tried.add(model)
         url = (
             f"https://generativelanguage.googleapis.com/v1beta/models/{model}"
             f":generateContent?key={api_key}"
