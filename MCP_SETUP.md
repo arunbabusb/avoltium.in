@@ -62,9 +62,16 @@ which is what `.mcp.json` in this repository does.
       -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
 
 A tool list means it is working. A `rest_forbidden` 401 means the credential
-is wrong or the user lacks the capability. The adapter also ships a self test
-at `/wp-json/mwai/v1/mcp/self_test`, and the abilities the server is exposing
-can be listed at `/wp-json/wp-abilities/v1/abilities`.
+is wrong or the user lacks the capability. The abilities the server exposes
+can be listed the same way:
+
+    curl -s -H "Authorization: Basic $WP_MCP_BASIC" \
+      https://www.avoltium.in/wp-json/wp-abilities/v1/abilities
+
+Those two are the check. The site also answers on
+`/wp-json/mwai/v1/mcp/self_test`, but that route belongs to AI Engine — a
+separate plugin with its own unrelated MCP module — so it says nothing about
+whether the adapter is reachable. Do not use it to verify this setup.
 
 ## Abilities
 
