@@ -1,0 +1,169 @@
+<p>If you look inside almost any commercial alkaline water electrolyzer, you will find the same liquid circulating through it: <strong>potassium hydroxide dissolved in water, somewhere between 20% and 30% by weight</strong>.</p>
+
+<p>That number looks arbitrary until you understand what it is balancing. This article walks through why KOH is there at all, why the concentration lands where it does, and how an engineer actually chooses a value for a real stack.</p>
+
+<figure class="wp-block-image size-large">
+  <img src="__IMG_TRADEOFF__" alt="Chart of KOH ionic conductivity versus concentration at 25 C and 80 C, showing the peak near 30 wt% and the 25-30 wt% operating band" width="1400" height="860" loading="eager" />
+  <figcaption>Ionic conductivity of KOH rises, peaks and then falls. The peak shifts to higher concentration as temperature rises — which is why hot stacks run near 30 wt%.</figcaption>
+</figure>
+
+<h2>Why there is an electrolyte at all</h2>
+
+<p>Splitting water sounds simple: pass current through it, get hydrogen and oxygen. In practice, pure water is a terrible conductor. Its resistance is so high that you would waste enormous energy just pushing current across the cell.</p>
+
+<p>Electricity in a liquid is carried by ions, not electrons. Pure water contains almost none. So you add something that dissolves into ions and stays chemically stable while the water splits around it.</p>
+
+<p>In an alkaline system, the ion doing the work is hydroxide (OH<sup>&minus;</sup>):</p>
+
+<ul>
+  <li><strong>At the cathode:</strong> 2H<sub>2</sub>O + 2e<sup>&minus;</sup> &rarr; H<sub>2</sub> + 2OH<sup>&minus;</sup></li>
+  <li><strong>At the anode:</strong> 2OH<sup>&minus;</sup> &rarr; &frac12;O<sub>2</sub> + H<sub>2</sub>O + 2e<sup>&minus;</sup></li>
+</ul>
+
+<p>Hydroxide is produced at one electrode and consumed at the other, shuttling charge across the gap. The potassium ion (K<sup>+</sup>) never reacts. It is a spectator that balances charge and keeps the solution neutral overall.</p>
+
+<p>The important consequence: <strong>KOH is not a fuel and is not consumed. Water is consumed. The KOH stays.</strong> This single fact drives a lot of the operational behaviour discussed later.</p>
+
+<h2>Why potassium and not sodium</h2>
+
+<p>Sodium hydroxide is cheaper and more widely available, so the choice deserves an explanation. KOH wins on three counts.</p>
+
+<h3>Higher conductivity</h3>
+
+<p>At the same concentration and temperature, KOH solutions conduct noticeably better than NaOH. The reason is counterintuitive. A potassium ion is physically larger than a sodium ion, but because its charge is spread over a bigger surface it holds water molecules less tightly. It drags a smaller shell of water with it as it moves, so it moves faster. Sodium, being small and densely charged, grips a thick hydration shell and lumbers through the solution.</p>
+
+<figure class="wp-block-image size-large">
+  <img src="__IMG_NAOH__" alt="Comparison chart showing potassium hydroxide conducts better than sodium hydroxide across all concentrations at 25 C" width="1400" height="780" loading="lazy" />
+  <figcaption>Potassium hydroxide outperforms sodium hydroxide at every concentration, and by the widest margin near its optimum.</figcaption>
+</figure>
+
+<h3>Lower viscosity</h3>
+
+<p>KOH solutions are thinner at equivalent strength. That matters more than it sounds: the electrolyte has to be pumped continuously, and gas bubbles have to detach from the electrodes and rise out of the way. Thick fluid costs pumping power and holds bubbles longer.</p>
+
+<h3>Better carbonate behaviour</h3>
+
+<p>Both hydroxides react with atmospheric CO<sub>2</sub> to form carbonates. Potassium carbonate is far more soluble than sodium carbonate, so it is less likely to precipitate inside electrode pores and diaphragms.</p>
+
+<p>For a small demonstration cell, NaOH is a reasonable economy. For anything meant to run continuously at high current density, the conductivity and viscosity advantages of KOH pay for themselves.</p>
+
+<h2>The central trade-off: conductivity has a peak</h2>
+
+<p>Here is the idea that explains the 20&ndash;30% band.</p>
+
+<p>You might expect that more KOH always means better conductivity. It does not. Plot conductivity against concentration and you get a curve that rises, flattens, and then falls.</p>
+
+<p><strong>Why it rises:</strong> more dissolved KOH means more ions available to carry charge.</p>
+
+<p><strong>Why it falls:</strong> past a point, the solution becomes crowded. Ions start interfering with each other. Viscosity climbs sharply. There is also less free water available to hydrate the ions properly, and ion pairing begins to take some charge carriers effectively out of circulation. Mobility drops faster than ion count rises, and net conductivity declines.</p>
+
+<p>Somewhere in between is a maximum. At room temperature it sits in the region of 28&ndash;30&nbsp;wt%, with conductivity around 0.6&nbsp;S/cm.</p>
+
+<p><strong>Then temperature changes the answer.</strong> Heating the solution reduces viscosity and speeds every ion up. Conductivity roughly doubles between 25&nbsp;&deg;C and 80&nbsp;&deg;C. Crucially, the <em>position</em> of the peak also shifts upward, toward roughly 30&ndash;35&nbsp;wt%, because the crowding penalty is less severe when the fluid is thinner.</p>
+
+<p>Industrial alkaline stacks run hot, typically 70&ndash;90&nbsp;&deg;C. So the standard 25&ndash;30&nbsp;wt% KOH charge is not tradition. It is a solution sitting close to its conductivity optimum at the temperature the stack actually operates at.</p>
+
+<h2>What else constrains the choice</h2>
+
+<p>Conductivity gets you a starting number. Four other factors decide whether you can keep it.</p>
+
+<figure class="wp-block-image size-large">
+  <img src="__IMG_TRADEOFFS_DIAGRAM__" alt="Diagram showing which factors push KOH concentration up and which pull it down, converging on 25 to 30 weight percent" width="1470" height="800" loading="lazy" />
+  <figcaption>Concentration is set by opposing pressures. 25&ndash;30&nbsp;wt% is where they balance for most systems.</figcaption>
+</figure>
+
+<h3>Materials and corrosion</h3>
+
+<p>Hot concentrated caustic is aggressive. This is why alkaline electrolyzers are built from nickel, nickel-plated steel, and specific polymers &mdash; nickel forms a stable passive film in strong alkali. Aluminium, zinc, tin and ordinary glass are destroyed. Some stainless steels are vulnerable to caustic stress corrosion cracking at elevated temperature.</p>
+
+<p>Every increase in concentration or temperature buys conductivity and spends material life. If your gasket or sensor housing is marginal at 30&nbsp;wt% and 85&nbsp;&deg;C, the cheapest fix is often to back off the concentration slightly rather than requalify the component.</p>
+
+<h3>Freezing point</h3>
+
+<p>This one surprises students. A 30&nbsp;wt% KOH solution does not freeze until roughly &minus;60&nbsp;&deg;C. Dilute solutions freeze near 0&nbsp;&deg;C.</p>
+
+<p>For an electrolyzer installed outdoors in a cold climate, or one that will sit idle through winter, staying in the concentrated range removes the risk of the stack freezing solid and cracking. It is a genuine design argument, not a footnote.</p>
+
+<h3>Pumping and bubble release</h3>
+
+<p>Higher concentration means higher viscosity, which means more pumping power. That is parasitic load subtracted directly from your system efficiency.</p>
+
+<p>It also means bubbles cling to electrode surfaces longer. A gas bubble sitting on an electrode is an insulator covering active area, raising the effective resistance of the cell. In systems where the flowing electrolyte itself does the work of separating the two gas streams &mdash; as in membrane-less designs &mdash; this coupling between viscosity, flow and separation quality becomes a primary design constraint rather than a secondary one.</p>
+
+<h3>Carbonate contamination</h3>
+
+<p>Any CO<sub>2</sub> that reaches the electrolyte converts KOH to potassium carbonate:</p>
+
+<p style="text-align:center;"><strong>2KOH + CO<sub>2</sub> &rarr; K<sub>2</sub>CO<sub>3</sub> + H<sub>2</sub>O</strong></p>
+
+<p>Carbonate conducts poorly, so performance degrades quietly over months. Worse, if concentrations get high enough, it can precipitate inside porous electrodes and diaphragms and cause permanent damage. The defences are a sealed circuit, an inert gas blanket on the reservoir, and periodic electrolyte analysis.</p>
+
+<h2>Concentration drifts during operation</h2>
+
+<p>Because water is consumed and KOH is not, the solution steadily gets stronger as the stack runs. Left alone, it climbs past the conductivity peak and starts losing efficiency.</p>
+
+<p>So concentration control is a routine operating task, not a one-time setup. Systems monitor density or conductivity and dose in demineralised water to hold the setpoint.</p>
+
+<p>The water quality matters. Tap water carries calcium and magnesium, which immediately precipitate as insoluble hydroxides in strong alkali and foul electrodes and separators. Feed water should be demineralised, typically below 1&nbsp;&micro;S/cm conductivity. This is one of the most common reasons a well-built laboratory cell underperforms.</p>
+
+<h2>A practical selection sequence</h2>
+
+<figure class="wp-block-table">
+<table>
+  <thead>
+    <tr><th>Step</th><th>Question</th><th>Typical outcome</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>1</td><td>What is the operating temperature?</td><td>70&ndash;90&nbsp;&deg;C for most industrial stacks</td></tr>
+    <tr><td>2</td><td>Where is the conductivity peak at that temperature?</td><td>Around 30&nbsp;wt% KOH</td></tr>
+    <tr><td>3</td><td>Can every wetted material survive it?</td><td>May force a reduction to 25&nbsp;wt%</td></tr>
+    <tr><td>4</td><td>What is the coldest ambient the unit will see?</td><td>Concentrated solutions resist freezing</td></tr>
+    <tr><td>5</td><td>What does viscosity cost in pumping and bubble release?</td><td>May pull the number down further</td></tr>
+    <tr><td>6</td><td>How will concentration be held and carbonate managed?</td><td>Water dosing, sealed circuit, periodic analysis</td></tr>
+  </tbody>
+</table>
+</figure>
+
+<p>Most designs converge on 25&ndash;30&nbsp;wt%. The value of working through the sequence is knowing <em>why</em> yours landed where it did, and which direction to move it when something else in the system changes.</p>
+
+<h2>Handling KOH safely</h2>
+
+<p>Potassium hydroxide causes severe chemical burns and permanent eye damage. It is not corrosive in the dramatic, smoking sense &mdash; it is worse than it looks, and damage to skin and eyes continues for as long as it is in contact.</p>
+
+<p>Non-negotiables for anyone working with it:</p>
+
+<ul>
+  <li>Chemical splash goggles, not safety glasses. Face shield when transferring.</li>
+  <li>Nitrile or butyl gloves and a chemical apron.</li>
+  <li><strong>Always add KOH to water, never water to KOH.</strong> Dissolution releases a lot of heat. Adding water to solid or concentrated KOH can flash the water to steam and spray caustic out of the vessel.</li>
+  <li>Add solid KOH slowly, in portions, with stirring, and let the solution cool between additions.</li>
+  <li>Eyewash and safety shower within reach before you open the container.</li>
+  <li>Never store or mix in aluminium or glass. Use HDPE or polypropylene.</li>
+</ul>
+
+<h2>The short version</h2>
+
+<p>KOH is in an alkaline electrolyzer to carry hydroxide ions across the cell. It is chosen over NaOH because potassium ions move faster, the solution is thinner, and its carbonate is more soluble. The concentration lands at 25&ndash;30&nbsp;wt% because that is where ionic conductivity peaks at typical stack operating temperature &mdash; and because it happens to also resist freezing, which is convenient.</p>
+
+<p>Everything above that band costs you in viscosity, pumping power, bubble retention and material corrosion. Everything below costs you in raw conductivity. The engineering is in knowing which of those constraints is binding in your particular system.</p>
+
+<h2>Frequently asked questions</h2>
+
+<h3>What concentration of KOH is used in alkaline electrolyzers?</h3>
+<p>Most industrial alkaline electrolyzers run on 25&ndash;30&nbsp;wt% potassium hydroxide in demineralised water. This band sits close to the peak of the ionic conductivity curve at typical stack operating temperatures of 70&ndash;90&nbsp;&deg;C.</p>
+
+<h3>Why is KOH used instead of NaOH in water electrolysis?</h3>
+<p>Potassium hydroxide conducts better, is less viscous at equivalent strength, and forms a more soluble carbonate. Potassium ions carry a lighter hydration shell than sodium ions, so they move through the solution faster and carry charge more efficiently.</p>
+
+<h3>Is potassium hydroxide consumed during electrolysis?</h3>
+<p>No. Water is consumed and split into hydrogen and oxygen. The potassium ion is a spectator and the hydroxide ion is regenerated at the cathode as fast as it is consumed at the anode. Only water needs to be replenished.</p>
+
+<h3>Why does electrolyte concentration rise over time?</h3>
+<p>Because water leaves the system as hydrogen and oxygen while the KOH stays behind, the remaining solution becomes progressively more concentrated. Demineralised water is dosed in to hold the setpoint, usually under density or conductivity control.</p>
+
+<h3>What happens if CO2 gets into the electrolyte?</h3>
+<p>It converts KOH to potassium carbonate, which conducts poorly and can precipitate inside porous electrodes and diaphragms. Performance degrades gradually. Sealed circuits, inert gas blanketing and periodic electrolyte analysis are the standard defences.</p>
+
+<hr />
+
+<p><em>Avoltium provides technical consulting on green hydrogen systems and industrial engineering. If you are specifying or troubleshooting an alkaline electrolyzer, <a href="https://avoltium.in/contact/">get in touch</a>.</em></p>
