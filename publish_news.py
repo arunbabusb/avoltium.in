@@ -120,6 +120,11 @@ NEWS_IMAGES = [
      "oil refinery", "Anacortes Refinery"),
     (re.compile(r"\b(grid|transmission|substation|power)\b", re.I),
      "solar power plant india", "Bhadla Solar Power Plant - 53699816551"),
+    (re.compile(r"\b(electroly[sz]er|pem|alkaline\s+stack|catalyst"
+                r"|hydrogen\s+(production|plant|supply)|natural\s+hydrogen)\b", re.I),
+     "PEM electrolyzer", "PEM electrolyzer"),
+    (re.compile(r"\b(saudi|riyadh|gulf|uae|abu\s*dhabi|middle\s*east)\b", re.I),
+     "Riyadh Saudi Arabia skyline", "Riyadh Skyline"),
 ]
 DEFAULT_IMAGE = ("electrolyser", "Science Museum")
 
