@@ -23,10 +23,24 @@ from datetime import datetime
 from html.parser import HTMLParser
 
 # ─── CONFIG ────────────────────────────────────────────────────────────────────
-# Reads from environment variables (GitHub Actions secrets) — fallback to defaults
-WP_URL      = os.getenv("WP_URL",          "https://www.techjobs360.com")
-WP_USERNAME = os.getenv("WP_USERNAME",     "admin")
-WP_APP_PASS = os.getenv("WP_APP_PASSWORD", os.getenv("WP_APP_PASS", "vgPl O24r nMOq dRF7 GhBN i9l4"))
+# Automatically load from local .env if present
+if os.path.exists(".env"):
+    try:
+        with open(".env", "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    k, v = line.split("=", 1)
+                    k = k.strip()
+                    v = v.strip().strip("'\"")
+                    if k and k not in os.environ:
+                        os.environ[k] = v
+    except Exception:
+        pass
+
+WP_URL      = os.getenv("TECHJOBS_WP_URL",      os.getenv("WP_URL", "https://www.techjobs360.com"))
+WP_USERNAME = os.getenv("TECHJOBS_WP_USERNAME", os.getenv("WP_USERNAME", "admin"))
+WP_APP_PASS = os.getenv("TECHJOBS_WP_APP_PASSWORD", os.getenv("WP_APP_PASSWORD", os.getenv("WP_APP_PASS", "vgPl O24r nMOq dRF7 GhBN i9l4")))
 
 MAX_JOBS_PER_QUERY = 10   # jobs to fetch per search query
 MAX_PUBLISH        = 30   # max to publish per run
@@ -627,6 +641,159 @@ def publish_job(job):
     role = clean_role_title(job["title"], job["company"])
     full_title = f"{role} at {job['company']}"
 
+# ─── TELEGRAM & INSTANT INDEXING HOOKS ──────────────────────────────────────────
+
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_CHAT_ID   = os.getenv("TELEGRAM_CHAT_ID", "@techjobs360")
+INDEXNOW_KEY       = os.getenv("INDEXNOW_KEY", "d8f5c3a4e9b2478190c1f5e8a7b3c2d1")
+GOOGLE_SERVICE_KEY = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON", "service_account.json")
+
+def broadcast_to_telegram(job, post_url, logo_url=""):
+    """Broadcast newly published job to Telegram channel with rich photo card."""
+    if not TELEGRAM_BOT_TOKEN:
+        return
+    
+    role = clean_role_title(job.get("title", ""), job.get("company", ""))
+    company = job.get("company", "")
+    location = job.get("location") or "India"
+    job_type = job.get("job_type") or "Full-time"
+    
+    caption = (
+        f"🔥 <b>{role} at {company}</b>\n\n"
+        f"🏢 <b>Company:</b> {company} ✓\n"
+        f"📍 <b>Location:</b> {location}\n"
+        f"💼 <b>Job Type:</b> {job_type}\n\n"
+        f"🚀 <b>Direct Application & Details:</b>\n"
+        f"👉 <a href=\"{post_url}\">Click Here to Apply on TechJobs360</a>\n\n"
+        f"🔔 <i>Join @techjobs360 for daily verified MNC & off-campus tech drives!</i>\n"
+        f"#TechJobs #{company.replace(' ', '')} #Hiring #IndiaTechJobs"
+    )
+
+    inline_keyboard = {
+        "inline_keyboard": [
+            [{"text": "🚀 Apply on TechJobs360", "url": post_url}],
+            [{"text": "✈️ Join Telegram Channel", "url": "https://t.me/techjobs360"}]
+        ]
+    }
+
+    try:
+        if logo_url and logo_url.startswith("http"):
+            # Send photo with formatted caption
+            tg_url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
+            payload = {
+                "chat_id": TELEGRAM_CHAT_ID,
+                "photo": logo_url,
+                "caption": caption,
+                "parse_mode": "HTML",
+                "reply_markup": inline_keyboard
+            }
+        else:
+            # Fallback to text message
+            tg_url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+            payload = {
+                "chat_id": TELEGRAM_CHAT_ID,
+                "text": caption,
+                "parse_mode": "HTML",
+                "disable_web_page_preview": False,
+                "reply_markup": inline_keyboard
+            }
+
+        req = urllib.request.Request(
+            tg_url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST"
+        )
+        with urllib.request.urlopen(req, timeout=15) as res:
+            log(f"   [TELEGRAM] Broadcast sent to {TELEGRAM_CHAT_ID} (HTTP {res.status})")
+    except Exception as e:
+        log(f"   [TELEGRAM] Broadcast notice: {e}")
+
+def instant_index_url(post_url):
+    """Instant index post across Bing, Yahoo, Yandex, and Google."""
+    if not post_url:
+        return
+
+    # 1. IndexNow Submission (Bing, Yahoo, Yandex, Naver, Seznam)
+    try:
+        indexnow_url = "https://api.indexnow.org/indexnow"
+        host = urllib.parse.urlparse(WP_URL).netloc
+        payload = {
+            "host": host,
+            "key": INDEXNOW_KEY,
+            "keyLocation": f"{WP_URL}/{INDEXNOW_KEY}.txt",
+            "urlList": [post_url]
+        }
+        headers = {
+            "Content-Type": "application/json; charset=utf-8",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko)"
+        }
+        req = urllib.request.Request(
+            indexnow_url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers=headers,
+            method="POST"
+        )
+        with urllib.request.urlopen(req, timeout=10) as res:
+            log(f"   [INDEXNOW] Instant indexing submitted for {post_url} (HTTP {res.status})")
+    except Exception as e:
+        log(f"   [INDEXNOW] Submission note: {e}")
+
+    # 2. Google Indexing API (If Service Account JSON is present)
+    service_file = GOOGLE_SERVICE_KEY if os.path.exists(GOOGLE_SERVICE_KEY) else None
+    if service_file:
+        try:
+            from google.oauth2 import service_account
+            import google.auth.transport.requests
+            
+            SCOPES = ["https://www.googleapis.com/auth/indexing"]
+            credentials = service_account.Credentials.from_service_account_file(service_file, scopes=SCOPES)
+            authed_session = google.auth.transport.requests.AuthorizedSession(credentials)
+            
+            endpoint = "https://indexing.googleapis.com/v3/urlNotifications:publish"
+            body = {"url": post_url, "type": "URL_UPDATED"}
+            response = authed_session.post(endpoint, json=body, timeout=15)
+            log(f"   [GOOGLE INDEXING] Submitted to Google Jobs Indexing API: {post_url} (HTTP {response.status_code})")
+        except Exception as e:
+            log(f"   [GOOGLE INDEXING] Note: {e}")
+
+    # 3. Google & Bing Sitemap Ping
+    try:
+        sitemap_url = f"{WP_URL}/sitemap_index.xml"
+        urllib.request.urlopen(f"https://www.google.com/ping?sitemap={urllib.parse.quote(sitemap_url)}", timeout=5)
+        urllib.request.urlopen(f"https://www.bing.com/ping?sitemap={urllib.parse.quote(sitemap_url)}", timeout=5)
+    except Exception:
+        pass
+
+
+def publish_job(job):
+    if not job.get("title") or not job.get("company"):
+        return False
+
+    # Quality gate 1: skip generic titles
+    if job["title"].lower().strip() in SKIP_TITLES:
+        log(f"   [SKIP] Generic title: {job['title']}")
+        return False
+
+    # Quality gate 2: MNC/reputed company only
+    if not is_mnc(job["company"]):
+        log(f"   [FILTER] Not MNC: {job['company']}")
+        return False
+
+    # Quality gate 3: India location only
+    if not is_india(job["location"]):
+        log(f"   [FILTER] Not India: {job['location']}")
+        return False
+
+    # Quality gate 4: must have substantive description
+    if len(job.get("description", "").strip()) < 80:
+        log(f"   [SKIP] Description too short for: {job['title']} at {job['company']}")
+        return False
+
+    # Standardize title format
+    role = clean_role_title(job["title"], job["company"])
+    full_title = f"{role} at {job['company']}"
+
     if job_exists_on_wp(full_title):
         log(f"   [DUP] {full_title}")
         return False
@@ -659,8 +826,16 @@ def publish_job(job):
 
     try:
         result = http_post_json(f"{WP_URL}/wp-json/wp/v2/posts", post_data, wp_headers())
+        post_url = result.get("link", "")
         log(f"   [OK] Published: {full_title}")
-        log(f"        {result.get('link', '')}")
+        log(f"        {post_url}")
+
+        # Instant Indexing submission
+        instant_index_url(post_url)
+
+        # Telegram Channel Broadcast
+        broadcast_to_telegram(job, post_url, logo_url=logo_url or "")
+
         return True
     except urllib.error.HTTPError as e:
         log(f"   [ERR] WP {e.code}: {e.read().decode()[:100]}")
