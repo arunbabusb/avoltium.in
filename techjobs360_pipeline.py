@@ -437,42 +437,123 @@ def get_or_upload_logo(company):
 
 CATEGORY_CACHE = {}
 
+def populate_categories_cache():
+    """Preload all WordPress categories into cache to avoid duplicate API calls."""
+    global CATEGORY_CACHE
+    try:
+        cats = http_get_json(f"{WP_URL}/wp-json/wp/v2/categories?per_page=100", wp_headers())
+        for c in cats:
+            slug = c.get("slug", "").lower()
+            name = c.get("name", "").lower()
+            CATEGORY_CACHE[slug] = c.get("id")
+            CATEGORY_CACHE[name] = c.get("id")
+        log(f"Cached {len(cats)} categories from WordPress.")
+    except Exception as e:
+        log(f"Category cache notice: {e}")
+
 def get_or_create_category(company):
     """Find or create WordPress category for the company (e.g., 'IBM Jobs')."""
     if not company:
         return None
     comp_clean = company.strip()
     cat_name = f"{comp_clean} Jobs"
-    if cat_name in CATEGORY_CACHE:
-        return CATEGORY_CACHE[cat_name]
+    cat_slug = re.sub(r'[^a-z0-9]+', '-', cat_name.lower()).strip('-')
+
+    if cat_slug in CATEGORY_CACHE:
+        return CATEGORY_CACHE[cat_slug]
+    if cat_name.lower() in CATEGORY_CACHE:
+        return CATEGORY_CACHE[cat_name.lower()]
 
     try:
-        # Check existing categories
-        cats = http_get_json(f"{WP_URL}/wp-json/wp/v2/categories?search={urllib.parse.quote(comp_clean)}&per_page=10", wp_headers())
-        for c in cats:
-            if c["name"].lower() == cat_name.lower() or c["name"].lower() == comp_clean.lower():
-                CATEGORY_CACHE[cat_name] = c["id"]
-                return c["id"]
-
-        # Create new category
-        slug = re.sub(r'[^a-z0-9]+', '-', cat_name.lower()).strip('-')
+        # Create new company category
         new_cat = http_post_json(
             f"{WP_URL}/wp-json/wp/v2/categories",
             {
                 "name": cat_name,
-                "slug": slug,
-                "description": f"Latest {comp_clean} job openings in India."
+                "slug": cat_slug,
+                "description": f"Latest {comp_clean} career opportunities, off-campus drives, and tech jobs."
             },
             wp_headers()
         )
         cat_id = new_cat.get("id")
         if cat_id:
-            CATEGORY_CACHE[cat_name] = cat_id
-            log(f"   [CAT] Created category '{cat_name}' (ID: {cat_id})")
+            CATEGORY_CACHE[cat_slug] = cat_id
+            CATEGORY_CACHE[cat_name.lower()] = cat_id
+            log(f"   [CAT] Created company category '{cat_name}' (ID: {cat_id})")
             return cat_id
     except Exception as e:
-        log(f"   [CAT] Error resolving category for {company}: {e}")
+        log(f"   [CAT] Error creating category for {company}: {e}")
     return None
+
+def resolve_job_categories(job):
+    """
+    Intelligently map job to multiple relevant WordPress categories:
+    1. Company Category (e.g. Google Jobs)
+    2. Role/Domain Category (e.g. Software Engineer, Full Stack, Backend, Frontend, DevOps, Data & AI, QA)
+    3. Batch/Experience Category (e.g. Freshers & 2026 Batch, Off-Campus Drives, Remote Tech Jobs, Internships)
+    """
+    cat_ids = []
+    
+    # 1. Company Category
+    comp_id = get_or_create_category(job.get("company", ""))
+    if comp_id:
+        cat_ids.append(comp_id)
+
+    title_lower = (job.get("title") or "").lower()
+    desc_lower  = (job.get("description") or "").lower()[:1500]
+    loc_lower   = (job.get("location") or "").lower()
+    sen_lower   = (job.get("seniority") or "").lower()
+
+    # 2. Role / Domain Categories (Pre-created IDs)
+    # Full Stack
+    if any(k in title_lower for k in ["fullstack", "full stack", "full-stack", "mern", "mean"]):
+        if "full-stack-developer" in CATEGORY_CACHE:
+            cat_ids.append(CATEGORY_CACHE["full-stack-developer"])
+    # Frontend
+    if any(k in title_lower for k in ["frontend", "front end", "front-end", "react", "angular", "vue", "ui developer"]):
+        if "frontend-developer" in CATEGORY_CACHE:
+            cat_ids.append(CATEGORY_CACHE["frontend-developer"])
+    # Backend
+    if any(k in title_lower for k in ["backend", "back end", "back-end", "node", "java", "python", "golang", "c++", "spring", "django", ".net"]):
+        if "backend-developer" in CATEGORY_CACHE:
+            cat_ids.append(CATEGORY_CACHE["backend-developer"])
+    # DevOps & Cloud
+    if any(k in title_lower for k in ["devops", "cloud", "aws", "azure", "gcp", "sre", "site reliability", "kubernetes", "docker", "infrastructure"]):
+        if "devops-cloud-jobs" in CATEGORY_CACHE:
+            cat_ids.append(CATEGORY_CACHE["devops-cloud-jobs"])
+    # Data & AI / ML
+    if any(k in title_lower for k in ["data", "ai", "machine learning", "ml", "analytics", "nlp", "llm", "deep learning", "data scientist", "data engineer"]):
+        if "data-ai-jobs" in CATEGORY_CACHE:
+            cat_ids.append(CATEGORY_CACHE["data-ai-jobs"])
+    # QA & Testing
+    if any(k in title_lower for k in ["qa", "quality", "test", "automation engineer", "sdet", "tester"]):
+        if "qa-automation-testing" in CATEGORY_CACHE:
+            cat_ids.append(CATEGORY_CACHE["qa-automation-testing"])
+    # General Software Engineer (Default if engineer/developer)
+    if any(k in title_lower for k in ["software", "engineer", "developer", "sde", "swe", "programmer", "architect"]):
+        if "software-engineer" in CATEGORY_CACHE:
+            cat_ids.append(CATEGORY_CACHE["software-engineer"])
+
+    # 3. Batch / Experience Categories
+    # Freshers & 2026 Batch
+    if any(k in title_lower or k in sen_lower for k in ["entry level", "associate", "fresher", "graduate", "2026", "2025", "trainee", "junior", "0-1", "0-2"]):
+        if "freshers-2026-batch" in CATEGORY_CACHE:
+            cat_ids.append(CATEGORY_CACHE["freshers-2026-batch"])
+        if "off-campus-drives" in CATEGORY_CACHE:
+            cat_ids.append(CATEGORY_CACHE["off-campus-drives"])
+
+    # Remote Tech Jobs
+    if any(k in loc_lower or k in title_lower for k in ["remote", "wfh", "anywhere", "work from home"]):
+        if "remote-tech-jobs" in CATEGORY_CACHE:
+            cat_ids.append(CATEGORY_CACHE["remote-tech-jobs"])
+
+    # Tech Internships
+    if any(k in title_lower for k in ["intern", "internship", "apprentice", "co-op"]):
+        if "tech-internships" in CATEGORY_CACHE:
+            cat_ids.append(CATEGORY_CACHE["tech-internships"])
+
+    # Deduplicate and return list of IDs
+    return list(dict.fromkeys(cat_ids))
 
 def build_job_posting_schema(job, logo_url=""):
     """Generate Schema.org JobPosting JSON-LD for Google Jobs rich results."""
@@ -766,6 +847,79 @@ def instant_index_url(post_url):
         pass
 
 
+# ─── FREE MULTI-SOURCE SCRAPERS ────────────────────────────────────────────────
+
+def fetch_remotive_jobs(limit=15):
+    """Fetch high-quality tech & developer jobs from Remotive free public API."""
+    url = f"https://remotive.com/api/remote-jobs?category=software-development&limit={limit}"
+    log(f"\n[MULTI-SOURCE] Fetching from Remotive Public Developer API...")
+    jobs = []
+    try:
+        data = http_get_json(url, {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
+        raw_list = data.get("jobs", [])
+        for r in raw_list[:limit]:
+            title = r.get("title", "")
+            comp = r.get("company_name", "")
+            if not title or not comp:
+                continue
+            
+            jobs.append({
+                "id": f"remotive-{r.get('id', '')}",
+                "title": title,
+                "company": comp,
+                "location": r.get("candidate_required_location") or "Remote / Worldwide",
+                "description": r.get("description") or f"Remote software development opening at {comp}.",
+                "url": r.get("url") or "",
+                "job_type": r.get("job_type") or "Full-time",
+                "seniority": "Mid-Senior Level",
+                "industry": "Software & Internet",
+                "source": "Remotive"
+            })
+        log(f"   [REMOTIVE] Retrieved {len(jobs)} verified developer jobs.")
+    except Exception as e:
+        log(f"   [REMOTIVE] Notice: {e}")
+    return jobs
+
+def fetch_arbeitnow_jobs(limit=15):
+    """Fetch tech jobs from Arbeitnow free public API."""
+    url = "https://www.arbeitnow.com/api/job-board-api"
+    log(f"\n[MULTI-SOURCE] Fetching from Arbeitnow Public Tech API...")
+    jobs = []
+    try:
+        data = http_get_json(url, {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
+        raw_list = data.get("data", [])
+        for r in raw_list:
+            if len(jobs) >= limit:
+                break
+            title = r.get("title", "")
+            comp = r.get("company_name", "")
+            if not title or not comp:
+                continue
+            
+            # Filter for tech roles
+            t_lower = title.lower()
+            if not any(k in t_lower for k in ["engineer", "developer", "software", "tech", "data", "cloud", "devops", "qa", "frontend", "backend", "fullstack", "ai"]):
+                continue
+
+            loc = r.get("location") or ("Remote" if r.get("remote") else "Worldwide")
+            jobs.append({
+                "id": f"arbeit-{r.get('slug', '')[:30]}",
+                "title": title,
+                "company": comp,
+                "location": loc,
+                "description": r.get("description") or f"Technology opening for {title} at {comp}.",
+                "url": r.get("url") or "",
+                "job_type": r.get("job_types", ["Full-time"])[0] if r.get("job_types") else "Full-time",
+                "seniority": "Mid-Senior Level",
+                "industry": "Information Technology",
+                "source": "Arbeitnow"
+            })
+        log(f"   [ARBEITNOW] Retrieved {len(jobs)} curated tech jobs.")
+    except Exception as e:
+        log(f"   [ARBEITNOW] Notice: {e}")
+    return jobs
+
+
 def publish_job(job):
     if not job.get("title") or not job.get("company"):
         return False
@@ -775,17 +929,7 @@ def publish_job(job):
         log(f"   [SKIP] Generic title: {job['title']}")
         return False
 
-    # Quality gate 2: MNC/reputed company only
-    if not is_mnc(job["company"]):
-        log(f"   [FILTER] Not MNC: {job['company']}")
-        return False
-
-    # Quality gate 3: India location only
-    if not is_india(job["location"]):
-        log(f"   [FILTER] Not India: {job['location']}")
-        return False
-
-    # Quality gate 4: must have substantive description
+    # Quality gate 2: check description length
     if len(job.get("description", "").strip()) < 80:
         log(f"   [SKIP] Description too short for: {job['title']} at {job['company']}")
         return False
@@ -804,10 +948,10 @@ def publish_job(job):
     if media_id:
         log(f"   [LOGO] Media attached (ID: {media_id}) -> {logo_url}")
 
-    # Resolve company category
-    cat_id = get_or_create_category(job["company"])
+    # Resolve intelligent multi-categories (Company + Role Domain + Experience Batch)
+    cat_ids = resolve_job_categories(job)
 
-    excerpt = f"Apply for {role} at {job['company']} in {job['location'] or 'India'}. Full job description, eligibility, and apply link inside."
+    excerpt = f"Apply for {role} at {job['company']} in {job['location'] or 'India'}. Full job description, eligibility, and direct apply link inside."
     post_data = {
         "title":          full_title,
         "content":        build_post_content(job, logo_url=logo_url or ""),
@@ -821,13 +965,13 @@ def publish_job(job):
     }
     if media_id:
         post_data["featured_media"] = media_id   # Sets WordPress post thumbnail / featured image
-    if cat_id:
-        post_data["categories"] = [cat_id]       # Assigns post to company category
+    if cat_ids:
+        post_data["categories"] = cat_ids        # Assigns post to multiple structured categories
 
     try:
         result = http_post_json(f"{WP_URL}/wp-json/wp/v2/posts", post_data, wp_headers())
         post_url = result.get("link", "")
-        log(f"   [OK] Published: {full_title}")
+        log(f"   [OK] Published: {full_title} (Categories: {cat_ids})")
         log(f"        {post_url}")
 
         # Instant Indexing submission
@@ -848,44 +992,55 @@ def publish_job(job):
 
 def run_pipeline():
     log("=" * 60)
-    log("TechJobs360 MNC Pipeline — LinkedIn Public API")
+    log("TechJobs360 Multi-Source Pipeline (LinkedIn + Remotive + Arbeitnow)")
     log("=" * 60)
 
-    # Preload media cache to reuse logos
+    # Preload media cache & categories cache
     populate_existing_media()
+    populate_categories_cache()
 
-    # Pick 3 random queries per run for variety
+    collected_jobs = []
+
+    # 1. Multi-Source: Remotive Tech API (Free Remote Developer Jobs)
+    remotive_jobs = fetch_remotive_jobs(limit=10)
+    collected_jobs.extend(remotive_jobs)
+
+    # 2. Multi-Source: Arbeitnow Tech API (Free Curated Tech Jobs)
+    arbeit_jobs = fetch_arbeitnow_jobs(limit=10)
+    collected_jobs.extend(arbeit_jobs)
+
+    # 3. Multi-Source: LinkedIn Public Guest Search API (India Top MNCs)
     queries = random.sample(JOB_QUERIES, min(3, len(JOB_QUERIES)))
-
-    all_job_ids = []
+    all_li_ids = []
     for query in queries:
-        log(f"\n[SEARCH] {query}")
+        log(f"\n[SEARCH - LINKEDIN] {query}")
         ids = search_linkedin_jobs(query, location="India", count=MAX_JOBS_PER_QUERY)
-        all_job_ids.extend(ids)
+        all_li_ids.extend(ids)
         time.sleep(2)
 
-    # Deduplicate
-    all_job_ids = list(set(all_job_ids))
-    log(f"\n[INFO] Total unique job IDs: {len(all_job_ids)}")
+    all_li_ids = list(set(all_li_ids))
+    log(f"\n[INFO] Total LinkedIn job IDs found: {len(all_li_ids)}")
 
-    if not all_job_ids:
-        log("[WARN] No job IDs found. LinkedIn may be rate limiting.")
+    for job_id in all_li_ids:
+        job = get_linkedin_job_detail(job_id)
+        if job:
+            collected_jobs.append(job)
+        time.sleep(1.2)
+
+    log(f"\n[TOTAL JOBS] Total jobs collected across all sources: {len(collected_jobs)}")
+
+    if not collected_jobs:
+        log("[WARN] No jobs collected.")
         return
 
     published = 0
     skipped   = 0
 
-    log("\n[PUBLISH] Fetching details and publishing...")
-    for job_id in all_job_ids:
+    log("\n[PUBLISH] Publishing jobs with auto-categorization...")
+    for job in collected_jobs:
         if published >= MAX_PUBLISH:
             log(f"[DONE] Reached max publish limit ({MAX_PUBLISH})")
             break
-
-        log(f"  Fetching job {job_id}...")
-        job = get_linkedin_job_detail(job_id)
-        if not job:
-            skipped += 1
-            continue
 
         success = publish_job(job)
         if success:
