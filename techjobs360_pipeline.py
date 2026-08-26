@@ -645,7 +645,7 @@ def publish_job(job):
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID   = os.getenv("TELEGRAM_CHAT_ID", "@techjobs360")
-INDEXNOW_KEY       = os.getenv("INDEXNOW_KEY", "d8f5c3a4e9b2478190c1f5e8a7b3c2d1")
+INDEXNOW_KEY       = os.getenv("INDEXNOW_KEY", "7f3a2b8c4d9e1f5a0b6c3d8e2f4a7b1c")
 GOOGLE_SERVICE_KEY = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON", "service_account.json")
 
 def broadcast_to_telegram(job, post_url, logo_url=""):
