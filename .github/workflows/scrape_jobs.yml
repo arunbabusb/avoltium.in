@@ -1,0 +1,41 @@
+name: TechJobs360 — Daily MNC Jobs Scraper
+
+on:
+  schedule:
+    # Runs at 6:00 AM IST (00:30 UTC), 12:00 PM IST (06:30 UTC), 6:00 PM IST (12:30 UTC)
+    - cron: '30 0 * * *'
+    - cron: '30 6 * * *'
+    - cron: '30 12 * * *'
+  workflow_dispatch:   # Allow manual trigger from GitHub UI
+
+jobs:
+  scrape-and-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Run TechJobs360 MNC Pipeline
+        env:
+          WP_URL:           ${{ secrets.WP_URL }}
+          WP_USERNAME:      ${{ secrets.WP_USERNAME }}
+          WP_APP_PASS:      ${{ secrets.WP_APP_PASS }}
+          PYTHONIOENCODING: "utf-8"
+        run: |
+          python techjobs360_pipeline.py
+
+      - name: Upload run log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pipeline-log-${{ github.run_id }}
+          path: pipeline.log
+          retention-days: 7
+          if-no-files-found: ignore

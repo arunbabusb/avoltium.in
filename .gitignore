@@ -1,0 +1,8 @@
+# Git ignore — keep secrets and local files out of repo
+.env
+*.pyc
+__pycache__/
+*.log
+.vscode/
+*.DS_Store
+publish_jobs_test.py
