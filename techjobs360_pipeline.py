@@ -547,6 +547,14 @@ def resolve_job_categories(job):
         if "remote-tech-jobs" in CATEGORY_CACHE:
             cat_ids.append(CATEGORY_CACHE["remote-tech-jobs"])
 
+    # Location Hubs (Bangalore & Hyderabad)
+    if any(k in loc_lower or k in title_lower for k in ["bengaluru", "bangalore"]):
+        if "bangalore-tech-jobs" in CATEGORY_CACHE:
+            cat_ids.append(CATEGORY_CACHE["bangalore-tech-jobs"])
+    if any(k in loc_lower or k in title_lower for k in ["hyderabad"]):
+        if "hyderabad-tech-jobs" in CATEGORY_CACHE:
+            cat_ids.append(CATEGORY_CACHE["hyderabad-tech-jobs"])
+
     # Tech Internships
     if any(k in title_lower for k in ["intern", "internship", "apprentice", "co-op"]):
         if "tech-internships" in CATEGORY_CACHE:

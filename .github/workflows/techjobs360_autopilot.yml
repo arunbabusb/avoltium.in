@@ -1,0 +1,41 @@
+name: TechJobs360 24/7 Autopilot Ingestion & Indexing Pipeline
+
+on:
+  schedule:
+    # Runs every 2 hours (at minute 0) 24/7/365
+    - cron: '0 */2 * * *'
+  workflow_dispatch: # Allows manual trigger anytime from GitHub Actions tab
+
+jobs:
+  run-pipeline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout Codebase
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: 'requirements.txt'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          pip install requests beautifulsoup4 python-dotenv
+
+      - name: Execute TechJobs360 Autonomous Ingestion Pipeline
+        env:
+          TECHJOBS_WP_URL: ${{ secrets.TECHJOBS_WP_URL || 'https://www.techjobs360.com' }}
+          TECHJOBS_WP_USERNAME: ${{ secrets.TECHJOBS_WP_USERNAME || 'admin' }}
+          TECHJOBS_WP_APP_PASSWORD: ${{ secrets.TECHJOBS_WP_APP_PASSWORD || 'vgPl O24r nMOq dRF7 GhBN i9l4' }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN || '984894655:AAHMzMqRzZK6nvh02WotbkFortsLwMJ2sM0' }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID || '-1001183899008' }}
+          INDEXNOW_KEY: ${{ secrets.INDEXNOW_KEY || '45d7b3c29f8e4a1b8c2d6e7f0a9b3c4d' }}
+          PYTHONUNBUFFERED: '1'
+        run: |
+          python techjobs360_pipeline.py
