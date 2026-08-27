@@ -1,4 +1,4 @@
-name: TechJobs360 24/7 Autopilot Ingestion & Google Search Console Sentinel
+name: TechJobs360 24/7 Autopilot Ingestion, Career Blog & SEO Sentinel
 
 on:
   schedule:
@@ -7,9 +7,9 @@ on:
   workflow_dispatch: # Allows manual trigger anytime from GitHub Actions tab
 
 jobs:
-  run-pipeline-and-sentinel:
+  run-autopilot-suite:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
 
     steps:
       - name: Checkout Codebase
@@ -28,7 +28,7 @@ jobs:
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
           pip install requests beautifulsoup4 python-dotenv
 
-      - name: Execute TechJobs360 Autonomous Ingestion Pipeline
+      - name: Execute Autonomous Job Ingestion Pipeline
         env:
           TECHJOBS_WP_URL: ${{ secrets.TECHJOBS_WP_URL || 'https://www.techjobs360.com' }}
           TECHJOBS_WP_USERNAME: ${{ secrets.TECHJOBS_WP_USERNAME || 'admin' }}
@@ -39,6 +39,18 @@ jobs:
           PYTHONUNBUFFERED: '1'
         run: |
           python techjobs360_pipeline.py
+
+      - name: Execute Autonomous Career Blog & SEO Engine
+        env:
+          TECHJOBS_WP_URL: ${{ secrets.TECHJOBS_WP_URL || 'https://www.techjobs360.com' }}
+          TECHJOBS_WP_USERNAME: ${{ secrets.TECHJOBS_WP_USERNAME || 'admin' }}
+          TECHJOBS_WP_APP_PASSWORD: ${{ secrets.TECHJOBS_WP_APP_PASSWORD || 'vgPl O24r nMOq dRF7 GhBN i9l4' }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN || '984894655:AAHMzMqRzZK6nvh02WotbkFortsLwMJ2sM0' }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID || '-1001183899008' }}
+          INDEXNOW_KEY: ${{ secrets.INDEXNOW_KEY || '45d7b3c29f8e4a1b8c2d6e7f0a9b3c4d' }}
+          PYTHONUNBUFFERED: '1'
+        run: |
+          python techjobs360_blog_engine.py
 
       - name: Execute 100-Year Google Search Console Sentinel Audit
         env:
