@@ -1,15 +1,15 @@
-name: TechJobs360 24/7 Autopilot Ingestion & Indexing Pipeline
+name: TechJobs360 24/7 Autopilot Ingestion & Google Search Console Sentinel
 
 on:
   schedule:
-    # Runs every 2 hours (at minute 0) 24/7/365
+    # Runs every 2 hours (at minute 0) 24/7/365 for 100 Years
     - cron: '0 */2 * * *'
   workflow_dispatch: # Allows manual trigger anytime from GitHub Actions tab
 
 jobs:
-  run-pipeline:
+  run-pipeline-and-sentinel:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
 
     steps:
       - name: Checkout Codebase
@@ -39,3 +39,11 @@ jobs:
           PYTHONUNBUFFERED: '1'
         run: |
           python techjobs360_pipeline.py
+
+      - name: Execute 100-Year Google Search Console Sentinel Audit
+        env:
+          TECHJOBS_WP_URL: ${{ secrets.TECHJOBS_WP_URL || 'https://www.techjobs360.com' }}
+          INDEXNOW_KEY: ${{ secrets.INDEXNOW_KEY || '45d7b3c29f8e4a1b8c2d6e7f0a9b3c4d' }}
+          PYTHONUNBUFFERED: '1'
+        run: |
+          python gsc_auto_sentinel.py
