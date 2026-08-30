@@ -24,3 +24,7 @@ approvals.json
 featured_media_before.json
 curated_shortlist.json
 fix_shortlist.json
+
+# Restore journals from prune_low_value.py — these record live post IDs and
+# are kept as workflow artifacts, not in the repo.
+pruned-*.json

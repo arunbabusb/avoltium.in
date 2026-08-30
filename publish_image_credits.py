@@ -58,9 +58,40 @@ def fetch_all(s, endpoint, **params):
     return out
 
 
+# Wikimedia stores the author as markup, not as a name: the `artist` field of
+# a Commons file is literally `<a href="...">Chris Allen</a>`, sometimes with a
+# nested <span> and an <img> "edit this" icon. WordPress escapes that on the
+# way into the attachment caption, so by the time it is read back the anchor is
+# `&lt;a href=&#8221;…&gt;` — text that looks like a tag but is not one. Tag
+# stripping alone leaves it untouched, and escaping it again put raw markup on
+# seven live pages.
+#
+# One unescape is not enough either: the caption comes back double-escaped on
+# some posts. Loop until the string stops changing, stripping tags each round,
+# so whatever depth it arrives at, what is left is the plain name.
+def clean_caption(raw: str) -> str:
+    """The attribution as readable text, however deeply it was escaped.
+
+    Alternates unescaping and tag stripping until it reaches a fixed point.
+    Bounded rather than `while True`: a caption crafted to unescape into
+    something that re-escapes would otherwise spin forever.
+    """
+    text = raw
+    for _ in range(5):
+        stripped = re.sub(r"<[^>]+>", " ", text)
+        unescaped = html.unescape(stripped)
+        if unescaped == text:
+            break
+        text = unescaped
+    # Smart quotes arrive from WordPress's texturiser attached to the stripped
+    # attribute values; nothing downstream wants them.
+    text = re.sub(r"[‘’“”″′]", "", text)
+    return " ".join(text.split())
+
+
 def credit_html(caption_text: str, source_page: str) -> str:
     """The credit paragraph, wrapped in sentinels so a re-run replaces it."""
-    text = html.escape(caption_text.strip().rstrip("."))
+    text = html.escape(clean_caption(caption_text).rstrip("."))
     if source_page:
         link = html.escape(source_page)
         text += f' — <a href="{link}" rel="nofollow noopener" target="_blank">source</a>'
@@ -105,7 +136,7 @@ def main() -> int:
                 changed += 1
             continue
 
-        block = credit_html(html.unescape(cap), "")
+        block = credit_html(cap, "")
         new = BLOCK.sub(block, body) if BLOCK.search(body) else body.rstrip() + "\n" + block
         if new.strip() == body.strip():
             skipped += 1

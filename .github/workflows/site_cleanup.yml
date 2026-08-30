@@ -1,0 +1,131 @@
+name: Site cleanup (AdSense review)
+
+# The three repairs made after the second low-value-content rejection. Manual
+# only: each one rewrites live published pages, and one of them unpublishes
+# fourteen of them, so nothing here should ever fire on a schedule.
+#
+# Dry run is the default, and it is worth actually reading. Every script logs
+# each page it would touch and why, and the run is cheap enough to repeat.
+#
+# Order is not arbitrary. Retiring runs first so the link repair afterwards
+# indexes the archive as it will actually stand; run the other way round and
+# links get "repaired" to point at posts that are about to be unpublished.
+on:
+  workflow_dispatch:
+    inputs:
+      execute:
+        description: "Apply the changes (unchecked = dry run, recommended first)"
+        type: boolean
+        required: false
+        default: false
+      steps:
+        description: "Which repairs to run"
+        type: choice
+        required: false
+        default: "all"
+        options:
+          - all
+          - prune-only
+          - credits-only
+          - links-only
+          - citations-only
+
+concurrency:
+  group: site-cleanup
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install requests pillow python-dotenv
+
+      # These rewrite live pages, so the rules they encode are checked before
+      # the run rather than after. Offline assertions only — no network, so a
+      # slow WordPress cannot fail the gate, and a broken rule cannot reach a
+      # published page.
+      - name: Check the cleanup rules
+        run: python -m unittest test_site_cleanup -v
+
+      - name: Retire duplicate coverage and theme demo pages
+        if: ${{ inputs.steps == 'all' || inputs.steps == 'prune-only' }}
+        env:
+          EXECUTE: ${{ inputs.execute }}
+          WP_URL: ${{ secrets.WP_URL }}
+          WP_USERNAME: ${{ secrets.WP_USERNAME }}
+          WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ "$EXECUTE" = "true" ]; then
+            python prune_low_value.py --audit --execute
+          else
+            python prune_low_value.py --audit
+          fi
+
+      # The journal is the only way back from a retire run without going
+      # through the WordPress admin by hand, and the container is thrown away
+      # when the job ends. Keep it whether or not later steps fail.
+      - name: Keep the restore journal
+        if: ${{ always() && inputs.execute && (inputs.steps == 'all' || inputs.steps == 'prune-only') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: prune-journal
+          path: pruned-*.json
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Repair image credits showing raw markup
+        if: ${{ inputs.steps == 'all' || inputs.steps == 'credits-only' }}
+        env:
+          EXECUTE: ${{ inputs.execute }}
+          WP_URL: ${{ secrets.WP_URL }}
+          WP_USERNAME: ${{ secrets.WP_USERNAME }}
+          WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ "$EXECUTE" = "true" ]; then
+            python fix_image_credits.py --execute
+          else
+            python fix_image_credits.py
+          fi
+
+      # Publishes the verified sources in citations.json into each post's
+      # provenance block. Runs after the prune so it does not spend a write on
+      # a post that is about to be unpublished.
+      - name: Publish verified sources
+        if: ${{ inputs.steps == 'all' || inputs.steps == 'citations-only' }}
+        env:
+          EXECUTE: ${{ inputs.execute }}
+          WP_URL: ${{ secrets.WP_URL }}
+          WP_USERNAME: ${{ secrets.WP_USERNAME }}
+          WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ "$EXECUTE" = "true" ]; then
+            python editorial_provenance.py --execute
+          else
+            python editorial_provenance.py
+          fi
+
+      - name: Repair internal links pointing at 404s
+        if: ${{ inputs.steps == 'all' || inputs.steps == 'links-only' }}
+        env:
+          EXECUTE: ${{ inputs.execute }}
+          WP_URL: ${{ secrets.WP_URL }}
+          WP_USERNAME: ${{ secrets.WP_USERNAME }}
+          WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ "$EXECUTE" = "true" ]; then
+            python fix_internal_links.py --execute
+          else
+            python fix_internal_links.py
+          fi

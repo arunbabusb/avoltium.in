@@ -237,16 +237,35 @@ def url_slug(title: str) -> str:
 
 
 def sources_block(item: news_sources.NewsItem) -> str:
-    """The whole point: the story this was written from, named and linked."""
+    """The whole point: the story this was written from, named and linked.
+
+    Three shapes, depending on how checkable the source actually is. The
+    headline and publisher are always named — that is enough for a reader to
+    find the story — and a link is offered only where it leads somewhere a
+    claim can be checked. Linking a Google News redirect satisfies the markup
+    and nobody else.
+    """
+    dateline = item.published.strftime("%d %B %Y")
+    tail = ('Figures and events above are as reported there; the engineering '
+            'commentary is ours.')
+
+    if item.links_to_article:
+        cite = (f'<a href="{html.escape(item.link)}" rel="nofollow noopener" '
+                f'target="_blank">{html.escape(item.title)}</a>, published {dateline}')
+    elif item.citable_link:
+        # The feed gave the publisher but not the article. Name the headline
+        # as text and point at the publisher, saying which is which.
+        cite = (f'&ldquo;{html.escape(item.title)}&rdquo;, published {dateline} '
+                f'(<a href="{html.escape(item.citable_link)}" rel="nofollow noopener" '
+                f'target="_blank">publisher’s site</a> — the feed did not '
+                f'carry a direct link to the article)')
+    else:
+        cite = f'&ldquo;{html.escape(item.title)}&rdquo;, published {dateline}'
+
     return (
         '<h2>Source</h2>'
         '<p class="av-sources">This analysis was written from reporting by '
-        f'<strong>{html.escape(item.publisher)}</strong>: '
-        f'<a href="{html.escape(item.link)}" rel="nofollow noopener" target="_blank">'
-        f'{html.escape(item.title)}</a>, published '
-        f'{item.published.strftime("%d %B %Y")}. '
-        'Figures and events above are as reported there; the engineering '
-        'commentary is ours.</p>'
+        f'<strong>{html.escape(item.publisher)}</strong>: {cite}. {tail}</p>'
     )
 
 
@@ -340,7 +359,12 @@ def main() -> int:
             body += "\n" + editorial_provenance.build_block(
                 item.title, editorial_provenance.DEFAULT_REVIEWER,
                 editorial_provenance.DEFAULT_ROLE,
-                datetime.date.today().strftime("%d %B %Y"))
+                datetime.date.today().strftime("%d %B %Y"),
+                # This post carries its own Source block, so the further
+                # reading note must not go on to say nothing here is a
+                # citation. That contradiction is what put 51 published posts
+                # in front of a reviewer disclaiming their own sourcing.
+                has_sources=True)
         except Exception as exc:
             logger.warning("    provenance block skipped (%s)", exc)
 

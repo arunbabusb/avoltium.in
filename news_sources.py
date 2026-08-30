@@ -207,6 +207,17 @@ TOPIC_BANDS = [
 WRITABLE_SUMMARY = 200
 
 
+# Google News does not put the publisher's article URL in its feed. `link` is
+# a redirect through news.google.com whose payload is an opaque protobuf token
+# — it carries no URL to decode, and resolving it needs a round trip through
+# Google's own endpoint that a publishing run should not depend on.
+#
+# It went out as a citation anyway: the 11 August refinery-award post cites
+# "The Tribune" and links 668 characters of news.google.com/rss/articles/CBMi…
+# A reader cannot tell what that points at, and neither can a reviewer.
+GOOGLE_NEWS = re.compile(r"^https?://(?:www\.)?news\.google\.com/", re.I)
+
+
 @dataclass
 class NewsItem:
     """One item from a publisher's feed, normalised across feed formats."""
@@ -216,6 +227,26 @@ class NewsItem:
     published: datetime
     summary: str
     region: str          # "india" | "global"
+    # The publisher's own site, from the feed's <source url>. Not the article,
+    # but real and checkable, which the redirect is not.
+    publisher_home: str = ""
+
+    @property
+    def citable_link(self) -> str:
+        """The URL worth putting in front of a reader, or "" if there is none.
+
+        A citation exists so a reader can check the claim. An opaque redirect
+        fails that test, so it is not offered as one — the publisher's own
+        site is, and where even that is missing the citation stays text.
+        """
+        if self.link and not GOOGLE_NEWS.match(self.link):
+            return self.link
+        return self.publisher_home or ""
+
+    @property
+    def links_to_article(self) -> bool:
+        """Whether citable_link is the story itself rather than a home page."""
+        return bool(self.link) and not GOOGLE_NEWS.match(self.link)
 
     def age_hours(self) -> float:
         """Hours since publication."""
@@ -314,6 +345,10 @@ def fetch_feed(name: str, url: str) -> List[NewsItem]:
         m = re.match(r"^(.*)\s+-\s+([^-]{2,40})$", title)
         if "news.google.com" in url and m:
             title, publisher = m.group(1).strip(), m.group(2).strip()
+        # <source url="https://newsonair.gov.in">News On AIR</source>. The one
+        # part of a Google News item that names a real, reachable publisher.
+        src = it.find("source")
+        publisher_home = (src.get("url") or "").strip() if src is not None else ""
         published = _parse_date(_text(it, "pubDate",
                                       "{http://purl.org/dc/elements/1.1/}date"))
         if published is None:
@@ -325,6 +360,7 @@ def fetch_feed(name: str, url: str) -> List[NewsItem]:
             published=published,
             summary=summary,
             region=region_of(f"{title} {summary}"),
+            publisher_home=publisher_home,
         ))
     return out
 
