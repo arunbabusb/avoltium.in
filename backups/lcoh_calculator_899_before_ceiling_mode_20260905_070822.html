@@ -1,0 +1,194 @@
+<!-- wp:html -->
+<div id="avoltium-lcoh-calculator" style="font-family: 'Inter', system-ui, sans-serif; max-width: 800px; margin: 2rem auto; padding: 2.5rem; background: #0f172a; border-radius: 16px; border: 1px solid #1e293b; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5); color: #f8fafc;">
+    
+    <div style="text-align: center; margin-bottom: 2.5rem;">
+        <h2 style="margin: 0 0 1rem 0; font-size: 2rem; font-weight: 800; color: #10b981; text-transform: uppercase; letter-spacing: -0.025em;">LCOH Calculator</h2>
+        <p style="margin: 0; font-size: 1rem; color: #94a3b8; line-height: 1.6;">Calculate the Levelized Cost of Hydrogen ($/kg) for green hydrogen production projects, breaking down CAPEX, OPEX, and Electricity costs.</p>
+    </div>
+
+    <!-- Inputs Section -->
+    <div style="background: rgba(30, 41, 59, 0.5); padding: 1.5rem; border-radius: 12px; margin-bottom: 2rem; border: 1px solid rgba(255,255,255,0.05);">
+        <h3 style="margin: 0 0 1.5rem 0; font-size: 1.25rem; color: #e2e8f0; border-bottom: 1px solid #334155; padding-bottom: 0.5rem;">1. System Parameters</h3>
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem;">
+            <div>
+                <label style="display: block; margin-bottom: 0.5rem; font-size: 0.875rem; font-weight: 600; color: #cbd5e1; text-transform: uppercase;">System Capacity (MW)</label>
+                <input type="number" id="lcoh-capacity" value="10" min="1" style="width: 100%; padding: 0.75rem 1rem; background: #1e293b; border: 1px solid #334155; border-radius: 8px; color: #fff; font-size: 1rem; outline: none; box-sizing: border-box;">
+            </div>
+            <div>
+                <label style="display: block; margin-bottom: 0.5rem; font-size: 0.875rem; font-weight: 600; color: #cbd5e1; text-transform: uppercase;">Total CAPEX ($/kW)</label>
+                <input type="number" id="lcoh-capex" value="1000" min="100" style="width: 100%; padding: 0.75rem 1rem; background: #1e293b; border: 1px solid #334155; border-radius: 8px; color: #fff; font-size: 1rem; outline: none; box-sizing: border-box;">
+            </div>
+            <div>
+                <label style="display: block; margin-bottom: 0.5rem; font-size: 0.875rem; font-weight: 600; color: #cbd5e1; text-transform: uppercase;">Efficiency (kWh/kg H₂)</label>
+                <input type="number" id="lcoh-efficiency" value="50" min="30" style="width: 100%; padding: 0.75rem 1rem; background: #1e293b; border: 1px solid #334155; border-radius: 8px; color: #fff; font-size: 1rem; outline: none; box-sizing: border-box;">
+            </div>
+            <div>
+                <label style="display: block; margin-bottom: 0.5rem; font-size: 0.875rem; font-weight: 600; color: #cbd5e1; text-transform: uppercase;">Electricity Price ($/kWh)</label>
+                <input type="number" id="lcoh-elec" value="0.05" min="0" step="0.01" style="width: 100%; padding: 0.75rem 1rem; background: #1e293b; border: 1px solid #334155; border-radius: 8px; color: #fff; font-size: 1rem; outline: none; box-sizing: border-box;">
+            </div>
+        </div>
+
+        <h3 style="margin: 0 0 1.5rem 0; font-size: 1.25rem; color: #e2e8f0; border-bottom: 1px solid #334155; padding-bottom: 0.5rem;">2. Financial Assumptions</h3>
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
+            <div>
+                <label style="display: block; margin-bottom: 0.5rem; font-size: 0.875rem; font-weight: 600; color: #cbd5e1; text-transform: uppercase;">Capacity Factor (%)</label>
+                <input type="number" id="lcoh-cf" value="60" min="1" max="100" style="width: 100%; padding: 0.75rem 1rem; background: #1e293b; border: 1px solid #334155; border-radius: 8px; color: #fff; font-size: 1rem; outline: none; box-sizing: border-box;">
+            </div>
+            <div>
+                <label style="display: block; margin-bottom: 0.5rem; font-size: 0.875rem; font-weight: 600; color: #cbd5e1; text-transform: uppercase;">Discount Rate / WACC (%)</label>
+                <input type="number" id="lcoh-wacc" value="8" min="1" max="100" style="width: 100%; padding: 0.75rem 1rem; background: #1e293b; border: 1px solid #334155; border-radius: 8px; color: #fff; font-size: 1rem; outline: none; box-sizing: border-box;">
+            </div>
+            <div>
+                <label style="display: block; margin-bottom: 0.5rem; font-size: 0.875rem; font-weight: 600; color: #cbd5e1; text-transform: uppercase;">Plant Lifetime (Years)</label>
+                <input type="number" id="lcoh-life" value="20" min="1" style="width: 100%; padding: 0.75rem 1rem; background: #1e293b; border: 1px solid #334155; border-radius: 8px; color: #fff; font-size: 1rem; outline: none; box-sizing: border-box;">
+            </div>
+            <div>
+                <label style="display: block; margin-bottom: 0.5rem; font-size: 0.875rem; font-weight: 600; color: #cbd5e1; text-transform: uppercase;">Fixed OPEX (% of CAPEX)</label>
+                <input type="number" id="lcoh-opex" value="3" min="0" max="100" style="width: 100%; padding: 0.75rem 1rem; background: #1e293b; border: 1px solid #334155; border-radius: 8px; color: #fff; font-size: 1rem; outline: none; box-sizing: border-box;">
+            </div>
+        </div>
+    </div>
+
+    <button type="button" onclick="runLCOHMath()" style="width: 100%; padding: 1.25rem; background: #10b981; color: #022c22; border: none; border-radius: 8px; font-size: 1.1rem; font-weight: 800; cursor: pointer; text-transform: uppercase; letter-spacing: 0.05em; transition: background 0.2s;" onmouseover="this.style.background='#34d399'" onmouseout="this.style.background='#10b981'">Calculate LCOH</button>
+
+    <!-- Step-by-Step Educational Output -->
+    <div id="lcoh-results" style="display: none; margin-top: 2.5rem; animation: slideDown 0.5s ease-out;">
+        
+        <h3 style="margin: 0 0 1.5rem 0; font-size: 1.25rem; color: #e2e8f0; border-bottom: 1px solid #334155; padding-bottom: 0.5rem;">Cost Engineering Breakdown</h3>
+
+        <!-- Step 1 -->
+        <div style="margin-bottom: 1.5rem; padding: 1rem; background: rgba(16, 185, 129, 0.05); border-left: 4px solid #10b981; border-radius: 4px;">
+            <div style="font-weight: 700; color: #10b981; margin-bottom: 0.5rem;">1. Annual Hydrogen Production</div>
+            <p style="margin: 0 0 0.5rem 0; font-size: 0.9rem; color: #94a3b8;">Total energy consumed over the year divided by the specific energy efficiency.</p>
+            <div style="font-family: monospace; background: #020617; padding: 0.75rem; border-radius: 6px; color: #38bdf8; font-size: 0.95rem;">
+                <span id="math-lcoh-step1"></span>
+            </div>
+        </div>
+
+        <!-- Step 2 -->
+        <div style="margin-bottom: 1.5rem; padding: 1rem; background: rgba(16, 185, 129, 0.05); border-left: 4px solid #10b981; border-radius: 4px;">
+            <div style="font-weight: 700; color: #10b981; margin-bottom: 0.5rem;">2. Annualized CAPEX & OPEX</div>
+            <p style="margin: 0 0 0.5rem 0; font-size: 0.9rem; color: #94a3b8;">Capital cost is annualized using the Capital Recovery Factor (CRF). OPEX is a fixed percentage of total CAPEX.</p>
+            <div style="font-family: monospace; background: #020617; padding: 0.75rem; border-radius: 6px; color: #38bdf8; font-size: 0.95rem;">
+                <span id="math-lcoh-step2"></span>
+            </div>
+        </div>
+
+        <!-- Step 3 -->
+        <div style="margin-bottom: 2rem; padding: 1rem; background: rgba(16, 185, 129, 0.05); border-left: 4px solid #10b981; border-radius: 4px;">
+            <div style="font-weight: 700; color: #10b981; margin-bottom: 0.5rem;">3. Electricity Costs</div>
+            <p style="margin: 0 0 0.5rem 0; font-size: 0.9rem; color: #94a3b8;">Annual electricity cost based on power consumption and grid/PPA tariff.</p>
+            <div style="font-family: monospace; background: #020617; padding: 0.75rem; border-radius: 6px; color: #38bdf8; font-size: 0.95rem;">
+                <span id="math-lcoh-step3"></span>
+            </div>
+        </div>
+
+        <h3 style="margin: 0 0 1rem 0; font-size: 1.25rem; color: #e2e8f0; border-bottom: 1px solid #334155; padding-bottom: 0.5rem;">Final LCOH</h3>
+        
+        <div style="background: #1e293b; padding: 2rem; border-radius: 12px; text-align: center; border: 1px solid #10b981; box-shadow: inset 0 0 20px rgba(16, 185, 129, 0.1);">
+            <div style="color: #94a3b8; font-size: 1rem; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.5rem;">Levelized Cost of Hydrogen</div>
+            <div id="final-lcoh" style="color: #10b981; font-size: 3.5rem; font-weight: 900; line-height: 1;">$0.00 <span style="font-size: 1.5rem; color: #64748b; font-weight: 600;">/ kg</span></div>
+            
+            <!-- Breakdown Bar -->
+            <div style="margin-top: 1.5rem; display: flex; height: 1.5rem; border-radius: 0.75rem; overflow: hidden;">
+                <div id="bar-capex" style="background: #3b82f6; width: 33%;" title="CAPEX"></div>
+                <div id="bar-opex" style="background: #f59e0b; width: 33%;" title="OPEX"></div>
+                <div id="bar-elec" style="background: #10b981; width: 34%;" title="Electricity"></div>
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-top: 0.75rem; font-size: 0.85rem; color: #cbd5e1; font-weight: 600;">
+                <div style="color: #3b82f6;">■ CAPEX (<span id="lbl-capex">33%</span>)</div>
+                <div style="color: #f59e0b;">■ OPEX (<span id="lbl-opex">33%</span>)</div>
+                <div style="color: #10b981;">■ Electricity (<span id="lbl-elec">34%</span>)</div>
+            </div>
+        </div>
+
+    </div>
+
+    <style>
+        @keyframes slideDown { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+
+    <script>
+        function runLCOHMath() {
+            try {
+                const mw = parseFloat(document.getElementById('lcoh-capacity').value) || 0;
+                const capex = parseFloat(document.getElementById('lcoh-capex').value) || 0;
+                const eff = parseFloat(document.getElementById('lcoh-efficiency').value) || 0;
+                const elec = parseFloat(document.getElementById('lcoh-elec').value) || 0;
+                const cf = (parseFloat(document.getElementById('lcoh-cf').value) || 0) / 100;
+                const wacc = (parseFloat(document.getElementById('lcoh-wacc').value) || 0) / 100;
+                const life = parseFloat(document.getElementById('lcoh-life').value) || 0;
+                const opexRate = (parseFloat(document.getElementById('lcoh-opex').value) || 0) / 100;
+
+                if (mw <= 0 || capex <= 0 || eff <= 0 || life <= 0) {
+                    alert("Please enter valid positive numbers for all parameters.");
+                    return;
+                }
+
+                const kw = mw * 1000;
+                const totalCapex = kw * capex;
+                const hoursPerYear = 8760;
+
+                // Step 1: Annual Production
+                const annualEnergy_kWh = kw * hoursPerYear * cf;
+                const annualProd_kg = annualEnergy_kWh / eff;
+                
+                document.getElementById('math-lcoh-step1').innerHTML = 
+                    `(${kw.toLocaleString()} kW × ${hoursPerYear} hrs × ${(cf*100).toFixed(0)}% CF) ÷ ${eff} kWh/kg<br>` +
+                    `= <strong style="color: #fff;">${Math.round(annualProd_kg).toLocaleString()} kg/year</strong>`;
+
+                // Step 2: CAPEX & OPEX
+                // Capital Recovery Factor: (r * (1 + r)^n) / ((1 + r)^n - 1)
+                const crf = (wacc * Math.pow(1 + wacc, life)) / (Math.pow(1 + wacc, life) - 1);
+                const annualizedCapex = totalCapex * crf;
+                const annualOpex = totalCapex * opexRate;
+                
+                document.getElementById('math-lcoh-step2').innerHTML = 
+                    `Total CAPEX: $${totalCapex.toLocaleString()}<br>` +
+                    `CRF (${(wacc*100).toFixed(1)}%, ${life} yrs): ${crf.toFixed(4)}<br>` +
+                    `Annualized CAPEX = $${Math.round(annualizedCapex).toLocaleString()}/yr<br>` + 
+                    `Annual OPEX (${(opexRate*100).toFixed(1)}%) = $${Math.round(annualOpex).toLocaleString()}/yr`;
+
+                // Step 3: Electricity
+                const annualElecCost = annualEnergy_kWh * elec;
+                document.getElementById('math-lcoh-step3').innerHTML = 
+                    `${Math.round(annualEnergy_kWh).toLocaleString()} kWh × $${elec.toFixed(3)}/kWh<br>` +
+                    `= <strong style="color: #fff;">$${Math.round(annualElecCost).toLocaleString()}/yr</strong>`;
+
+                // Final LCOH
+                const lcoh_capex = annualizedCapex / annualProd_kg;
+                const lcoh_opex = annualOpex / annualProd_kg;
+                const lcoh_elec = annualElecCost / annualProd_kg;
+                const total_lcoh = lcoh_capex + lcoh_opex + lcoh_elec;
+
+                document.getElementById('final-lcoh').innerHTML = `$${total_lcoh.toFixed(2)} <span style="font-size: 1.5rem; color: #64748b; font-weight: 600;">/ kg</span>`;
+
+                // Breakdown update
+                const pctCapex = (lcoh_capex / total_lcoh) * 100;
+                const pctOpex = (lcoh_opex / total_lcoh) * 100;
+                const pctElec = (lcoh_elec / total_lcoh) * 100;
+
+                document.getElementById('bar-capex').style.width = `${pctCapex}%`;
+                document.getElementById('bar-opex').style.width = `${pctOpex}%`;
+                document.getElementById('bar-elec').style.width = `${pctElec}%`;
+
+                document.getElementById('lbl-capex').innerText = `${pctCapex.toFixed(1)}%`;
+                document.getElementById('lbl-opex').innerText = `${pctOpex.toFixed(1)}%`;
+                document.getElementById('lbl-elec').innerText = `${pctElec.toFixed(1)}%`;
+
+                const resDiv = document.getElementById('lcoh-results');
+                resDiv.style.display = 'block';
+                resDiv.style.animation = 'none';
+                resDiv.offsetHeight; 
+                resDiv.style.animation = 'slideDown 0.5s ease-out';
+            } catch(e) {
+                console.error("Calculator Error:", e);
+                alert("An error occurred processing the math.");
+            }
+        }
+    </script>
+</div>
+
+<!-- /wp:html -->
