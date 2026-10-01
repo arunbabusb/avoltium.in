@@ -99,8 +99,19 @@ def fix_content(html: str) -> str:
     # 3. Fix broken internal links that lost hyphens in URLs
     #    e.g. href="https://www.avoltium.in/electrolyzercalculator/"
     #       → href="https://www.avoltium.in/electrolyzer-calculator/"
+    #
+    #    Pair-by-pair replacement is what let this stay broken: the water
+    #    entry pointed at water-consumption-calculator, which is not a page on
+    #    this site, so the "repair" turned one dead link into another. Anything
+    #    not in this table — five article URLs that lost their hyphens the same
+    #    way — went unrepaired entirely. fix_internal_links.py resolves those
+    #    against the live slug list; these two are the pair worth fixing
+    #    offline because the generators emit them into every article.
     html = html.replace("/electrolyzercalculator/", "/electrolyzer-calculator/")
-    html = html.replace("/waterconsumptioncalculator/", "/water-consumption-calculator/")
+    html = html.replace("/waterconsumptioncalculator/",
+                        "/water-consumption-treatment-calculator/")
+    html = html.replace("/water-consumption-calculator/",
+                        "/water-consumption-treatment-calculator/")
 
     # 4. Remove stray LaTeX
     html = re.sub(r"\$\$.*?\$\$", "", html, flags=re.DOTALL)

@@ -1,0 +1,438 @@
+{
+  "_README": [
+    "Verified primary sources, keyed by post slug.",
+    "",
+    "Every entry here was checked by opening the source and confirming it",
+    "carries the claim the post is built on — the figure, the parties and the",
+    "date. Nothing goes in this file on the strength of a search result",
+    "snippet or a plausible-looking URL. A citation that does not support the",
+    "sentence it hangs off is worse than no citation, and on a site whose",
+    "articles are AI-drafted it is the specific failure that costs the most.",
+    "",
+    "'checked' is the date the URL was opened and the claim confirmed.",
+    "'verified' records what was actually found there, so the next person can",
+    "re-check the claim without repeating the search.",
+    "",
+    "editorial_provenance.py reads this file and renders a Sources section",
+    "into each post's provenance block. A post with no entry keeps the generic",
+    "Further reading list and says plainly that it is background, not",
+    "citation."
+  ],
+  "_REFERENCES": {
+    "_why": [
+      "Standards and published datasets the engineering posts rest on, keyed",
+      "so twenty-six posts that all mean ASTM D1193 Type I water point at the",
+      "same page. Each was opened and checked on 2026-08-11.",
+      "",
+      "These are References, not Sources: they are the baseline an analysis",
+      "works from, not reporting an article was written from. The two are",
+      "rendered as separate lists for that reason."
+    ],
+    "astm_d1193": {
+      "title": "ASTM D1193-06(2018), Standard Specification for Reagent Water — Type I: 18 MΩ·cm at 25 °C, TOC below 50 ppb",
+      "url": "https://store.astm.org/d1193-06r18.html",
+      "publisher": "ASTM International",
+      "date": "2018"
+    },
+    "iso_22734": {
+      "title": "ISO 22734:2019, Hydrogen generators using water electrolysis — construction, safety and performance requirements",
+      "url": "https://www.iso.org/standard/69212.html",
+      "publisher": "International Organization for Standardization",
+      "date": "2019"
+    },
+    "doe_pem_targets": {
+      "title": "Technical Targets for Proton Exchange Membrane Electrolysis — 51 kWh/kg system status (2022) against a 46 kWh/kg ultimate target",
+      "url": "https://www.energy.gov/eere/fuelcells/technical-targets-proton-exchange-membrane-electrolysis",
+      "publisher": "US Department of Energy, Hydrogen and Fuel Cell Technologies Office",
+      "date": "accessed August 2026"
+    },
+    "doe_pem_cost": {
+      "title": "Clean Hydrogen Production Cost: PEM Electrolyzer (Program Record 24005)",
+      "url": "https://www.hydrogen.energy.gov/docs/hydrogenprogramlibraries/pdfs/24005-clean-hydrogen-production-cost-pem-electrolyzer.pdf",
+      "publisher": "US Department of Energy, Hydrogen Program",
+      "date": "20 May 2024"
+    },
+    "irena_cost": {
+      "title": "Green Hydrogen Cost Reduction: Scaling up Electrolysers to Meet the 1.5 °C Climate Goal — 1 MW to 20 MW cuts cost by over a third",
+      "url": "https://www.irena.org/publications/2020/Dec/Green-hydrogen-cost-reduction",
+      "publisher": "International Renewable Energy Agency",
+      "date": "December 2020"
+    },
+    "nghm_mnre": {
+      "title": "National Green Hydrogen Mission — mission document and SIGHT scheme guidelines",
+      "url": "https://mnre.gov.in/en/national-green-hydrogen-mission/",
+      "publisher": "Ministry of New and Renewable Energy, Government of India",
+      "date": "accessed August 2026"
+    }
+  },
+  "_MISMATCHED": {
+    "why": [
+      "Posts whose title promises one subject and whose body delivers another.",
+      "No citation fixes this, and adding references to them would dress up",
+      "the problem rather than name it.",
+      "",
+      "The pattern behind them: 26 of the 40 surviving posts carry a",
+      "water-treatment or feedstock-purity section, whatever the headline says.",
+      "One template appears to have been applied across many titles, which is",
+      "why an article about oil markets argues about electrolyzer feedwater.",
+      "That is the duplicate-content problem the hydrogen-train cluster made",
+      "obvious, showing up in a form that title-level checks do not catch.",
+      "",
+      "Each needs a title that matches its body, or retirement."
+    ],
+    "global-oil-markets-2025-key-trends-shaping-the-energy-landscape": {
+      "measured": "Mentions oil, OPEC, barrel or crude 2 times; electrolyzer or water 34 times, in 1,220 words. Its four section headings are all electrolyzer and water treatment.",
+      "recommend": "Retitle to what it argues, or retire. A reader arriving from a search for oil market analysis gets an electrolyzer article."
+    },
+    "automated-drilling-systems-how-ai-and-robotics-are-transforming-rig-operations": {
+      "measured": "19 electrolyzer/water mentions in 1,085 words; sections cover feedwater purity and electrolyzer power, not drilling automation.",
+      "recommend": "Retitle or retire."
+    },
+    "offshore-wind-energy-the-next-frontier-for-oil-and-gas-expertise": {
+      "measured": "18 electrolyzer/water mentions in 1,231 words; the body is an electrolyzer and water-treatment piece with an offshore framing.",
+      "recommend": "Retitle to reflect the offshore hydrogen content, or retire."
+    },
+    "compressor-technologies-for-high-pressure-green-hydrogen-storage": {
+      "measured": "Section headings are upstream water treatment and stack overpotential; compression is not the subject of the article the title names.",
+      "recommend": "Rewrite to cover compression, or retitle."
+    },
+    "building-a-zero-incident-safety-culture-hseq-excellence-in-energy-operations": {
+      "measured": "423 words, the shortest post on the site, with one section heading — 'About this article'. There is no article under the title.",
+      "recommend": "Retire."
+    }
+  },
+
+  "_UNCITABLE": {
+    "why": [
+      "Posts researched and deliberately left without sources. Each was looked",
+      "for and each failed for a stated reason. They are recorded here so the",
+      "gap is a decision on the record rather than an oversight, and so nobody",
+      "repeats the search. Every one of them needs an editor, not a citation."
+    ],
+    "gujarat-data-centre-policy-green-hydrogen-ai-push-seen-adding-50-to-indias-solar-capacity-growth-2": {
+      "published": "2026-07-15",
+      "problem": "Calls the Viksit Gujarat Data Centre Policy 2026-29 'newly minted'. That policy was notified on 7 August 2026, three weeks after this post ran, and the headline claim of '50%+ acceleration in India's solar capacity growth' traces to nothing published. Citing the August notification here would date a source after the article that supposedly reports it.",
+      "recommend": "Rewrite against the notified policy and re-date it, or retire it."
+    },
+    "as-told-to-parliament-july-21-2026-women-constitute-over-half-of-indias-agri-workforce-centre-says": {
+      "published": "2026-07-21",
+      "problem": "The subject is women's share of the agricultural workforce. The green hydrogen content is an 'engineering insight' about farmgate green ammonia bolted onto an unrelated Parliament disclosure. Even a correct citation for the Parliament statement would not make this a green hydrogen article.",
+      "recommend": "Off-beat for this publication. Retire."
+    },
+    "clean-energy-deals-dominate-this-week-hydrogen-storage-offshore-wind-and-a-major-shell-divestiture": {
+      "published": "2026-07-22",
+      "problem": "A roundup of several unrelated transactions with no single source. Sourcing it honestly means one citation per deal, and the post does not name the deals precisely enough to find them.",
+      "recommend": "Either cite every deal individually or retire. Roundups assembled from other outlets' reporting are the format that reads most like aggregation."
+    },
+    "global-indian-green-hydrogen-news-roundup-july-2026": {
+      "published": "2026-08-07",
+      "problem": "Same as above: a monthly roundup covering many announcements, several of which are separately covered elsewhere on the site.",
+      "recommend": "Retire. Its content duplicates posts that now carry real sources."
+    }
+  },
+  "centre-awards-30-ktpa-green-hydrogen-capacity-to-four-oil-refineries-under-national-green-hydrogen-mission": {
+    "checked": "2026-08-11",
+    "verified": "Total 30 KTPA under SIGHT Mode-2B: IOCL Panipat 10 KTPA, BPCL Bina 5 KTPA, HPCL Vizag 5 KTPA, Numaligarh Refineries 10 KTPA.",
+    "sources": [
+      {
+        "title": "National Green Hydrogen Mission advances green hydrogen adoption in petroleum and refining sector",
+        "url": "https://theindiapost.com/national-green-hydrogen-mission-advances-green-hydrogen-adoption-in-petroleum-and-refining-sector/",
+        "publisher": "The India Post",
+        "date": "11 August 2026"
+      },
+      {
+        "title": "Centre awards 30 KTPA green hydrogen capacity to four oil refineries under National Green Hydrogen Mission",
+        "url": "https://aninews.in/news/business/centre-awards-30-ktpa-green-hydrogen-capacity-to-four-oil-refineries-under-national-green-hydrogen-mission20260811180606/",
+        "publisher": "ANI News",
+        "date": "11 August 2026"
+      }
+    ],
+    "references": [
+      "nghm_mnre"
+    ]
+  },
+  "centre-approves-rs-797-crore-green-hydrogen-jetty-at-paradip-port-3": {
+    "checked": "2026-08-11",
+    "verified": "Rs 797.17 crore approved by the Ministry of Ports, Shipping and Waterways; 4 MTPA capacity; implemented by Paradip Port Authority; 24-month completion.",
+    "note": "Source is dated 27 February 2026; this post ran 16 July 2026.",
+    "sources": [
+      {
+        "title": "Centre clears Rs 797 crore green hydrogen jetty project at Paradip Port to boost clean energy logistics",
+        "url": "https://ddnews.gov.in/en/centre-clears-rs-797-crore-green-hydrogen-jetty-project-at-paradip-port-to-boost-clean-energy-logistics/",
+        "publisher": "DD News (Prasar Bharati)",
+        "date": "27 February 2026"
+      }
+    ]
+  },
+  "ohmium-and-insolare-collaborate-to-deliver-a-multi-application-green-hydrogen-project-for-nlc-india-limited": {
+    "checked": "2026-08-11",
+    "verified": "4 MW project for NLC India Limited at Neyveli, Tamil Nadu; up to 700 metric tons of hydrogen per year.",
+    "sources": [
+      {
+        "title": "Ohmium and InSolare collaborate to deliver a multi-application green hydrogen project for NLC India Limited",
+        "url": "https://www.ohmium.com/press-release/ohmium-and-insolare-collaborate-to-deliver-a-multi-application-green-hydrogen-project-for-nlc-india-limited",
+        "publisher": "Ohmium International (company announcement)",
+        "date": "28 May 2026"
+      }
+    ]
+  },
+  "india-launches-green-hydrogen-certification-portal-to-boost-clean-fuel-transparency": {
+    "checked": "2026-08-11",
+    "verified": "Green Hydrogen Certification Portal of India launched by Union Minister Pralhad Joshi at the MNRE National Workshop, New Delhi. Six states with notified policies, seven with hydrogen in existing frameworks, four finalising; 15 companies awarded incentives for 3,000 MW/yr electrolyser manufacturing.",
+    "sources": [
+      {
+        "title": "MNRE launches Green Hydrogen Certification Portal of India",
+        "url": "https://energetica-india.net/news/mnre-launches-green-hydrogen-certification-portal-of-india",
+        "publisher": "Energetica India",
+        "date": "18 June 2026"
+      }
+    ],
+    "references": [
+      "nghm_mnre"
+    ]
+  },
+  "haryana-govt-set-to-introduce-green-hydrogen-policy-soon-to-promote-clean-energy-in-state-4": {
+    "checked": "2026-08-11",
+    "verified": "Haryana Chief Secretary Anurag Rastogi said the state will introduce a Green Hydrogen Policy; follows a review of IOCL's 10,000 TPA Panipat green hydrogen plant, due for completion December 2026.",
+    "note": "Source is dated 17 March 2026; this post ran 22 July 2026.",
+    "sources": [
+      {
+        "title": "Haryana Govt set to introduce Green Hydrogen Policy soon to promote clean energy in state",
+        "url": "https://www.newsonair.gov.in/haryana-govt-set-to-introduce-green-hydrogen-policy-soon-to-promote-clean-energy-in-state",
+        "publisher": "NewsOnAir (Prasar Bharati)",
+        "date": "17 March 2026"
+      }
+    ]
+  },
+  "centre-approves-rs-22-crore-support-for-first-batch-of-green-hydrogen-startups": {
+    "checked": "2026-08-11",
+    "verified": "Rs 22 crore approved for nine startups, announced by Union Minister Pralhad Joshi at an MNRE National Green Hydrogen Mission workshop; part of a Rs 100 crore startup call.",
+    "note": "Source is dated 17 June 2026; this post ran 7 August 2026.",
+    "sources": [
+      {
+        "title": "Centre clears Rs 22 crore aid for startups under Green Hydrogen Mission",
+        "url": "https://www.business-standard.com/industry/news/centre-clears-22-crore-aid-for-startups-under-green-hydrogen-mission-126061701322_1.html",
+        "publisher": "Business Standard",
+        "date": "17 June 2026"
+      }
+    ],
+    "references": [
+      "nghm_mnre"
+    ]
+  },
+  "strain-engineered-cu3pt-catalyst-cuts-platinum-by-75-in-hydrogen-fuel-cell-cathodes": {
+    "checked": "2026-08-11",
+    "verified": "IMDEA Materials Institute; strain-engineered Cu3Pt thin film on NiTi delivers Pt-level oxygen reduction performance at 25% of the platinum loading. Underlying paper: 'The influence of elastic strains on the catalytic activity of Cu3Pt thin films for the oxygen reduction reaction', Electrochimica Acta (2026).",
+    "sources": [
+      {
+        "title": "New catalyst with 75% less platinum promises to reduce the cost of hydrogen fuel cells",
+        "url": "https://phys.org/news/2026-08-catalyst-platinum-hydrogen-fuel-cells.html",
+        "publisher": "Phys.org — on the Electrochimica Acta paper",
+        "date": "August 2026"
+      },
+      {
+        "title": "Strain-engineered Cu3Pt catalyst cuts platinum by 75% in hydrogen fuel cell cathodes",
+        "url": "https://www.hydrogenfuelnews.com/strain-engineered-cu-pt-catalyst-cuts-platinum-by-75-in-hydrogen-fuel-cell-catho/8576421/",
+        "publisher": "Hydrogen Fuel News",
+        "date": "August 2026"
+      }
+    ]
+  },
+  "greenzo-energy-builds-indias-green-hydrogen-manufacturing-base": {
+    "checked": "2026-08-11",
+    "verified": "250 MW annual electrolyser manufacturing capacity; order book approximately Rs 1,800 crore; single-stack alkaline electrolysers from 0.5 MW to 5 MW.",
+    "sources": [
+      {
+        "title": "Greenzo Energy builds India's green hydrogen manufacturing base",
+        "url": "https://unlistedzone.com/greenzo-energy-green-hydrogen-250mw-manufacturing-order-book-india",
+        "publisher": "UnlistedZone",
+        "date": "21 July 2026"
+      }
+    ]
+  },
+  "indias-green-hydrogen-mission-gains-momentum-despite-capacity-and-infrastructure-challenges-sbicaps-report": {
+    "checked": "2026-08-11",
+    "verified": "SBICAPS: 2030 target 5 MTPA against under 10 KTPA operational; SIGHT scheme INR 175 bn, of which INR 44.4 bn for electrolyser manufacturing and INR 130.5 bn for production, about 55% allocated; 1.2 MTPA auctioned acts as a ceiling for 2030 output.",
+    "sources": [
+      {
+        "title": "India's 2030 target of 5 mtpa green hydrogen capacity remains distant with only 10 ktpa operational: SBICAPS",
+        "url": "https://www.pv-magazine-india.com/2026/07/22/indias-2030-target-of-5-mtpa-green-hydrogen-capacity-remains-distant-with-only-10-ktpa-operational-sbicaps/",
+        "publisher": "pv magazine India",
+        "date": "22 July 2026"
+      }
+    ],
+    "references": [
+      "nghm_mnre"
+    ]
+  },
+  "brihynergy-ships-15mw-pem-hydrogen-system": {
+    "checked": "2026-08-11",
+    "verified": "15 MW shipped to a project in Romania as three 5 MW systems of 1,000 Nm3/h each, using BriLyzer R-Series PEM stacks. Facts confirmed on the Hydrogen Central write-up; Fuel Cells Works carried the story first, on 20 July, which is the report that predates this post.",
+    "sources": [
+      {
+        "title": "BriHyNergy ships 15MW PEM hydrogen production system to Europe",
+        "url": "https://fuelcellsworks.com/2026/07/20/fuel-cells/brihynergy-ships-15mw-pem-hydrogen-production-system-to-europe-advancing-large-scale-green-hydrogen-deployment",
+        "publisher": "Fuel Cells Works",
+        "date": "20 July 2026"
+      },
+      {
+        "title": "BriHyNergy ships 15MW PEM hydrogen production system to Europe, advancing large-scale green hydrogen deployment",
+        "url": "https://hydrogen-central.com/brihynergy-ships-15mw-pem-hydrogen-production-system-to-europe-advancing-large-scale-green-hydrogen-deployment/",
+        "publisher": "Hydrogen Central",
+        "date": "23 July 2026"
+      }
+    ]
+  },
+  "experts-discuss-strategies-to-build-indias-domestic-green-hydrogen-market-at-global-hydrogen-renewable-energy-summit-2025": {
+    "checked": "2026-08-11",
+    "verified": "Global Hydrogen & Renewable Energy Summit 2025, held 12-13 March 2025 in Kochi, Kerala. Strategies reported: hydrogen valleys, cost reduction through R&D, safety regulation across the value chain, localised applications in chemicals, refineries, fertilisers and mobility, and public-private collaboration.",
+    "sources": [
+      {
+        "title": "Experts discuss strategies to build India's domestic green hydrogen market at Global Hydrogen & Renewable Energy Summit 2025",
+        "url": "https://egov.eletsonline.com/2026/07/experts-discuss-strategies-to-build-indias-domestic-green-hydrogen-market-at-global-hydrogen-renewable-energy-summit-2025/",
+        "publisher": "Elets eGov",
+        "date": "16 July 2026"
+      }
+    ]
+  },
+  "iit-kanpur-to-set-up-centre-of-excellence-for-green-hydrogen-under-up-policy": {
+    "checked": "2026-08-11",
+    "verified": "IIT Kanpur to establish ECOGEN, a Centre of Excellence on green hydrogen, sanctioned by UPNEDA under the Uttar Pradesh Green Hydrogen Policy 2024; Principal Investigator Dr Prabodh Bajpai. Joint CoE with HBTU approved 16 December 2025.",
+    "sources": [
+      {
+        "title": "IIT Kanpur and HBTU get joint approval for Centre of Excellence for Green Hydrogen under Uttar Pradesh Policy-2024",
+        "url": "https://www.iitk.ac.in/green-energy-hydrogen-revolution",
+        "publisher": "IIT Kanpur (institutional announcement)",
+        "date": "July 2026"
+      },
+      {
+        "title": "IIT Kanpur to set up Centre of Excellence for green hydrogen research",
+        "url": "https://www.tribuneindia.com/news/uttar-pradesh/iit-kanpur-to-set-up-centre-of-excellence-for-green-hydrogen-research/",
+        "publisher": "The Tribune",
+        "date": "20 July 2026"
+      }
+    ]
+  },
+  "ultrapure-water-a-small-cost-with-outsized-risk-in-green-hydrogen": {
+    "checked": "2026-08-11",
+    "verified": "References assigned by topic: the documents this analysis leans on, each opened and checked. No reporting source — this is an evergreen engineering piece, not a news report.",
+    "references": [
+      "astm_d1193"
+    ]
+  },
+  "ultrapure-water-demand-and-reverse-osmosis-ro-optimization-in-hydrogen-hubs": {
+    "checked": "2026-08-11",
+    "verified": "References assigned by topic: the documents this analysis leans on, each opened and checked. No reporting source — this is an evergreen engineering piece, not a news report.",
+    "references": [
+      "astm_d1193"
+    ]
+  },
+  "electrodeionization-edi-vs-mixed-bed-polishing-for-electrolyzer-feedwater": {
+    "checked": "2026-08-11",
+    "verified": "References assigned by topic: the documents this analysis leans on, each opened and checked. No reporting source — this is an evergreen engineering piece, not a news report.",
+    "references": [
+      "astm_d1193"
+    ]
+  },
+  "balance-of-plant-bop-strategies-for-large-scale-green-hydrogen-facilities-2": {
+    "checked": "2026-08-11",
+    "verified": "References assigned by topic: the documents this analysis leans on, each opened and checked. No reporting source — this is an evergreen engineering piece, not a news report.",
+    "references": [
+      "astm_d1193"
+    ]
+  },
+  "next-generation-pem-electrolyzer-architectures-and-efficiency-gains": {
+    "checked": "2026-08-11",
+    "verified": "References assigned by topic: the documents this analysis leans on, each opened and checked. No reporting source — this is an evergreen engineering piece, not a news report.",
+    "references": [
+      "doe_pem_targets",
+      "iso_22734"
+    ]
+  },
+  "materials-engineering-for-electrolyzer-degradation-mitigation": {
+    "checked": "2026-08-11",
+    "verified": "References assigned by topic: the documents this analysis leans on, each opened and checked. No reporting source — this is an evergreen engineering piece, not a news report.",
+    "references": [
+      "doe_pem_targets",
+      "iso_22734"
+    ]
+  },
+  "cooling-systems-and-thermal-management-in-industrial-electrolyzers": {
+    "checked": "2026-08-11",
+    "verified": "References assigned by topic: the documents this analysis leans on, each opened and checked. No reporting source — this is an evergreen engineering piece, not a news report.",
+    "references": [
+      "iso_22734",
+      "doe_pem_targets"
+    ]
+  },
+  "gasket-and-sealing-technology-for-high-pressure-alkaline-stacks": {
+    "checked": "2026-08-11",
+    "verified": "References assigned by topic: the documents this analysis leans on, each opened and checked. No reporting source — this is an evergreen engineering piece, not a news report.",
+    "references": [
+      "iso_22734"
+    ]
+  },
+  "balance-of-plant-bop-strategies-for-large-scale-green-hydrogen-facilities": {
+    "checked": "2026-08-11",
+    "verified": "References assigned by topic: the documents this analysis leans on, each opened and checked. No reporting source — this is an evergreen engineering piece, not a news report.",
+    "references": [
+      "iso_22734",
+      "astm_d1193"
+    ]
+  },
+  "bop-testing-and-maintenance-critical-best-practices-for-well-control-safety": {
+    "checked": "2026-08-11",
+    "verified": "References assigned by topic: the documents this analysis leans on, each opened and checked. No reporting source — this is an evergreen engineering piece, not a news report.",
+    "references": [
+      "iso_22734",
+      "astm_d1193"
+    ]
+  },
+  "lcoh-deep-dive-sensitivity-of-hydrogen-cost-to-electricity-price-and-capacity-factor": {
+    "checked": "2026-08-11",
+    "verified": "References assigned by topic: the documents this analysis leans on, each opened and checked. No reporting source — this is an evergreen engineering piece, not a news report.",
+    "references": [
+      "doe_pem_cost",
+      "irena_cost",
+      "doe_pem_targets"
+    ]
+  },
+  "green-hydrogen-and-the-next-energy-learning-curve": {
+    "checked": "2026-08-11",
+    "verified": "References assigned by topic: the documents this analysis leans on, each opened and checked. No reporting source — this is an evergreen engineering piece, not a news report.",
+    "references": [
+      "irena_cost"
+    ]
+  },
+  "can-green-hydrogen-become-indias-next-export-industry-2": {
+    "checked": "2026-08-11",
+    "verified": "References assigned by topic: the documents this analysis leans on, each opened and checked. No reporting source — this is an evergreen engineering piece, not a news report.",
+    "references": [
+      "irena_cost",
+      "nghm_mnre"
+    ]
+  },
+  "batteries-and-hydrogen-competitors-or-partners": {
+    "checked": "2026-08-11",
+    "verified": "References assigned by topic: the documents this analysis leans on, each opened and checked. No reporting source — this is an evergreen engineering piece, not a news report.",
+    "references": [
+      "doe_pem_cost"
+    ]
+  },
+  "green-hydrogen-in-2025-from-pilot-projects-to-commercial-scale-reality": {
+    "checked": "2026-08-11",
+    "verified": "References assigned by topic: the documents this analysis leans on, each opened and checked. No reporting source — this is an evergreen engineering piece, not a news report.",
+    "references": [
+      "irena_cost",
+      "doe_pem_targets"
+    ]
+  },
+  "green-hydrogen-explained-how-it-is-produced-where-it-is-used-and-indias-mission-3": {
+    "checked": "2026-08-11",
+    "verified": "References assigned by topic: the documents this analysis leans on, each opened and checked. No reporting source — this is an evergreen engineering piece, not a news report.",
+    "references": [
+      "nghm_mnre",
+      "astm_d1193"
+    ]
+  }
+}
