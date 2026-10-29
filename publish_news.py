@@ -38,6 +38,7 @@ import sys
 
 import requests
 
+import article_source
 import news_sources
 import qc_check
 import resilient
@@ -66,7 +67,8 @@ SOURCE ITEM
 Headline: {title}
 Publisher: {publisher}
 Published: {published}
-Summary from the source: {summary}
+Text of the source article (your only fact base):
+{summary}
 Link: {link}
 
 HARD RULES
@@ -255,6 +257,104 @@ def sources_block(item: news_sources.NewsItem) -> str:
     )
 
 
+def make_excerpt(body: str, limit: int = 155) -> str:
+    """The post excerpt, taken from the article's own "In brief" box.
+
+    The feed summary used to go here, and for Google News items that is just
+    "Headline Publisher". The In brief line is written for exactly this job.
+    """
+    m = re.search(r"In brief:\s*</strong>(.*?)</div>", body, re.S | re.I)
+    text = m.group(1) if m else body
+    text = html.unescape(re.sub(r"<[^>]+>", " ", text))
+    text = re.sub(r"\s+", " ", text).strip()
+    if len(text) <= limit:
+        return text
+    cut = text[:limit - 1].rsplit(" ", 1)[0].rstrip(",;:-")
+    return cut + "\u2026"
+
+
+# Tag name -> pattern matched against the headline and body. Ordered by
+# specificity; the first five that match are used.
+TAG_RULES = [
+    ("PEM electrolyzer", r"\bPEM\b|proton exchange membrane"),
+    ("alkaline electrolyzer", r"\balkaline\b"),
+    ("green ammonia", r"\bammonia\b"),
+    ("refineries", r"\brefiner(y|ies)\b"),
+    ("fuel cells", r"\bfuel[- ]cells?\b"),
+    ("hydrogen rail", r"\b(train|rail|locomotive)s?\b"),
+    ("hydrogen storage", r"\b(storage|liquefaction|salt cavern)\b"),
+    ("hydrogen transport", r"\b(pipeline|shipping|bunkering|refuel\w*|trucks?)\b"),
+    ("electrolyser manufacturing", r"\b(gigafactory|manufactur\w+)\b"),
+    ("water treatment", r"\b(desalination|reverse osmosis|demineral\w+)\b"),
+    ("policy", r"\b(policy|mission|tender|subsid\w+|SIGHT|SECI)\b"),
+    ("India", r"\b(India|Indian|Gujarat|Odisha|Tamil Nadu|Rajasthan|NTPC|SECI|MNRE)\b"),
+    ("China", r"\b(China|Chinese)\b"),
+    ("Saudi Arabia", r"\b(Saudi|NEOM)\b"),
+    ("green hydrogen", r"\bgreen hydrogen\b"),
+]
+MAX_TAGS = 5
+
+
+def tag_names(title: str, body: str) -> list[str]:
+    """Up to MAX_TAGS tag names that fit this article."""
+    text = f"{title} {re.sub('<[^>]+>', ' ', body)}"
+    out = []
+    for name, pat in TAG_RULES:
+        if re.search(pat, text, re.I) and name not in out:
+            out.append(name)
+        if len(out) == MAX_TAGS:
+            break
+    return out
+
+
+def tag_ids(title: str, body: str, session=requests) -> list[int]:
+    """WordPress tag IDs for the article, creating any tag that is missing."""
+    ids = []
+    for name in tag_names(title, body):
+        try:
+            r = session.get(f"{WP_URL}/wp-json/wp/v2/tags", auth=AUTH, timeout=30,
+                            params={"search": name, "per_page": 20, "_fields": "id,name"})
+            hit = next((t["id"] for t in (r.json() if r.status_code == 200 else [])
+                        if html.unescape(t["name"]).lower() == name.lower()), None)
+            if hit is None:
+                c = session.post(f"{WP_URL}/?rest_route=/wp/v2/tags", auth=AUTH,
+                                 timeout=30, json={"name": name})
+                if c.status_code in (200, 201):
+                    hit = c.json()["id"]
+                elif c.status_code == 400 and "term_exists" in c.text:
+                    hit = c.json().get("data", {}).get("term_id")
+            if hit:
+                ids.append(int(hit))
+        except Exception as exc:
+            logger.warning("    tag %r skipped (%s)", name, exc)
+    return ids
+
+
+def prepare_source(item) -> bool:
+    """Swap in the publisher URL and the publisher's article text.
+
+    Returns False when the item must be skipped: a Google link that will not
+    resolve, or an article too short to write from honestly.
+    """
+    if article_source.is_google_news(item.link):
+        url = article_source.resolve_google_news(item.link)
+        if not url:
+            logger.warning("    unresolved Google News link — skipping")
+            return False
+        logger.info("    resolved -> %s", url[:90])
+        item.link = url
+    text = article_source.fetch_article_text(item.link)
+    if len(text) >= article_source.MIN_ARTICLE_CHARS:
+        item.summary = text
+        return True
+    if not article_source.is_headline_echo(item.title, item.summary, item.publisher) \
+            and len(item.summary) >= news_sources.WRITABLE_SUMMARY:
+        logger.info("    article text unavailable; feed summary is substantive")
+        return True
+    logger.warning("    too little source text (%d chars) — skipping", len(text))
+    return False
+
+
 def write_article(item: news_sources.NewsItem) -> str | None:
     """Draft the article body for one news item, or None if it cannot be written.
 
@@ -325,13 +425,29 @@ def main() -> int:
             out.append(i)
         return out
 
-    picked = fresh(india)[:n_india] + fresh(world)[:n_glob]
-    logger.info("selected %d item(s) (%d India / %d global)", len(picked), n_india, n_glob)
+    # Candidates beyond the quota are kept as reserves: an item whose link
+    # will not resolve or whose article cannot be fetched is skipped, and the
+    # next one in rank order takes its place. The quota itself — the daily
+    # cadence — does not change.
+    queues = [(fresh(india), n_india), (fresh(world), n_glob)]
+    logger.info("target %d item(s) (%d India / %d global)", n_india + n_glob, n_india, n_glob)
+
+    picked = []
+    for queue, quota in queues:
+        taken = 0
+        for item in queue:
+            if taken >= quota:
+                break
+            logger.info("[%s] %s", item.region, item.title[:66])
+            logger.info("    %s — %s", item.publisher, item.link[:70])
+            if prepare_source(item):
+                picked.append(item)
+                taken += 1
+    logger.info("selected %d item(s) with publisher links and source text", len(picked))
 
     published = held = 0
     for item in picked:
-        logger.info("[%s] %s", item.region, item.title[:66])
-        logger.info("    %s — %s", item.publisher, item.link[:70])
+        logger.info("[%s] writing: %s", item.region, item.title[:60])
         if not args.execute:
             continue
 
@@ -375,7 +491,8 @@ def main() -> int:
             "content": body,
             "status": status,
             "categories": [NEWS_CATEGORY],
-            "excerpt": (item.summary or item.title)[:180],
+            "excerpt": make_excerpt(body),
+            "tags": tag_ids(item.title, body),
             **({"featured_media": media_id} if media_id else {}),
         })
         if r.status_code in (200, 201):
