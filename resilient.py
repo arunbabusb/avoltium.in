@@ -34,7 +34,7 @@ RETRYABLE_STATUS = frozenset({408, 429, 500, 502, 503, 504})
 # name the endpoint does not serve rather than a busy one. It stays in the
 # chain as a fallback but no longer costs a wasted call in front of the model
 # that works.
-DEFAULT_GEMINI_MODELS = ["gemini-flash-latest", "gemini-2.0-flash", "gemini-2.0-flash-lite"]
+DEFAULT_GEMINI_MODELS = ["gemini-flash-latest", "gemini-2.5-flash", "gemini-flash-lite-latest", "gemini-2.5-flash-lite"]  # 2.0 models retired (HTTP 404)
 
 
 def sleep_backoff(attempt: int, base: float = 2.0, cap: float = 30.0) -> None:
