@@ -205,7 +205,7 @@ class TestDiagnosability(ChainTestCase):
         with redirect_stdout(io.StringIO()):
             text, model = resilient.generate_text("k", "p")
         self.assertEqual(text, "drafted")
-        self.assertEqual(model, "gemini-2.0-flash")
+        self.assertEqual(model, "gemini-2.5-flash")
 
 
 class TestModelOrder(unittest.TestCase):
