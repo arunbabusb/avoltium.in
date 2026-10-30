@@ -103,6 +103,15 @@ class TestExcerpt(unittest.TestCase):
 
 
 class TestTags(unittest.TestCase):
+    def test_country_is_not_crowded_out(self):
+        names = p.tag_names("India leads green hydrogen offtake",
+                            "<p>PEM ammonia refinery pipeline policy fuel cell</p>")
+        self.assertIn("India", names)
+
+    def test_process_train_is_not_rail(self):
+        names = p.tag_names("Offtake deals", "<p>two ammonia synthesis trains on track</p>")
+        self.assertNotIn("hydrogen rail", names)
+
     def test_names_capped_at_five(self):
         names = p.tag_names("India PEM ammonia refinery pipeline policy in China",
                             "<p>green hydrogen fuel cell train storage</p>")

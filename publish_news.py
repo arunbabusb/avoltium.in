@@ -276,20 +276,24 @@ def make_excerpt(body: str, limit: int = 155) -> str:
 # Tag name -> pattern matched against the headline and body. Ordered by
 # specificity; the first five that match are used.
 TAG_RULES = [
-    ("PEM electrolyzer", r"\bPEM\b|proton exchange membrane"),
-    ("alkaline electrolyzer", r"\balkaline\b"),
-    ("green ammonia", r"\bammonia\b"),
-    ("refineries", r"\brefiner(y|ies)\b"),
-    ("fuel cells", r"\bfuel[- ]cells?\b"),
-    ("hydrogen rail", r"\b(train|rail|locomotive)s?\b"),
-    ("hydrogen storage", r"\b(storage|liquefaction|salt cavern)\b"),
-    ("hydrogen transport", r"\b(pipeline|shipping|bunkering|refuel\w*|trucks?)\b"),
-    ("electrolyser manufacturing", r"\b(gigafactory|manufactur\w+)\b"),
-    ("water treatment", r"\b(desalination|reverse osmosis|demineral\w+)\b"),
-    ("policy", r"\b(policy|mission|tender|subsid\w+|SIGHT|SECI)\b"),
+    # Countries first: where a story happens is the tag readers browse by most,
+    # and listing them last let generic matches crowd them out of the five.
     ("India", r"\b(India|Indian|Gujarat|Odisha|Tamil Nadu|Rajasthan|NTPC|SECI|MNRE)\b"),
     ("China", r"\b(China|Chinese)\b"),
     ("Saudi Arabia", r"\b(Saudi|NEOM)\b"),
+    ("PEM electrolyzer", r"\bPEM\b|proton exchange membrane"),
+    ("alkaline electrolyzer", r"\balkaline\s+(electroly\w+|stack|system)"),
+    ("green ammonia", r"\bammonia\b"),
+    ("refineries", r"\brefiner(y|ies)\b"),
+    ("fuel cells", r"\bfuel[- ]cells?\b"),
+    # Phrases, not bare words: "train" alone matched process trains and
+    # "on track" copy, and tagged an offtake story as rail.
+    ("hydrogen rail", r"\b(hydrogen|fuel[- ]cell)[- ](train|rail|locomotive)s?\b|\bhydrail\b"),
+    ("hydrogen storage", r"\b(salt cavern|liquefaction|storage tanks?|hydrogen storage)\b"),
+    ("hydrogen transport", r"\b(pipeline|bunkering|refuell?ing station)s?\b"),
+    ("electrolyser manufacturing", r"\b(gigafactory|electroly[sz]er manufactur\w+)\b"),
+    ("water treatment", r"\b(desalination|reverse osmosis|demineral\w+)\b"),
+    ("policy", r"\b(policy|mission|tender|subsid\w+|SIGHT)\b"),
     ("green hydrogen", r"\bgreen hydrogen\b"),
 ]
 MAX_TAGS = 5
