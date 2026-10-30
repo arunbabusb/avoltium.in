@@ -106,6 +106,10 @@ FORMAT
 # actually depicts. Reusing one across several stories in a section is normal
 # editorial practice; publishing a wrong picture is not.
 NEWS_IMAGES = [
+    # Checked first: "natural hydrogen" stories also mention production and
+    # would otherwise fall through to the electrolyser photo.
+    (re.compile(r"\b(natural|geologic\w*|white|gold)\s+hydrogen\b|\bexploration\b|\bdrill\w*", re.I),
+     "drilling rig", "Drill rig-invergordon"),
     (re.compile(r"\b(train|rail|locomotive|metro|tram)\b", re.I),
      "hydrogen train", "Coradia iLint 554 009"),
     (re.compile(r"\b(solar|photovolta|pv)\b", re.I),
@@ -123,7 +127,7 @@ NEWS_IMAGES = [
     (re.compile(r"\b(grid|transmission|substation|power)\b", re.I),
      "solar power plant india", "Bhadla Solar Power Plant - 53699816551"),
     (re.compile(r"\b(electroly[sz]er|pem|alkaline\s+stack|catalyst"
-                r"|hydrogen\s+(production|plant|supply)|natural\s+hydrogen)\b", re.I),
+                r"|hydrogen\s+(production|plant|supply))\b", re.I),
      "PEM electrolyzer", "PEM electrolyzer"),
     (re.compile(r"\b(saudi|riyadh|gulf|uae|abu\s*dhabi|middle\s*east)\b", re.I),
      "Riyadh Saudi Arabia skyline", "Riyadh Skyline"),
@@ -131,26 +135,51 @@ NEWS_IMAGES = [
 DEFAULT_IMAGE = ("electrolyser", "Science Museum")
 
 
-def pick_image(item) -> tuple | None:
-    """A verified photograph matching the story's subject, or None."""
+def _relevant(candidate, query: str) -> bool:
+    """A search hit whose title shares a real word with the query.
+
+    The guard that keeps a fallback pick on subject: without it, the first
+    result for "water quality monitoring" was a monitor lizard.
+    """
+    words = {w for w in re.findall(r"[a-z]{4,}", query.lower())}
+    title = candidate.title.lower()
+    return any(w in title for w in words)
+
+
+def _search(query: str) -> list:
     import image_sourcing
-    text = f"{item.title} {item.summary}"
-    query, frag = DEFAULT_IMAGE
-    for pat, q, f in NEWS_IMAGES:
-        if pat.search(text):
-            query, frag = q, f
-            break
     try:
-        pool = (image_sourcing.search_wikimedia(query)
+        return (image_sourcing.search_wikimedia(query)
                 + image_sourcing.search_openverse(query))
     except Exception as exc:
-        logger.warning("    image search failed (%s)", exc)
-        return None
-    hit = next((c for c in pool if frag.lower() in c.title.lower()), None)
-    if hit is None:
+        logger.warning("    image search failed for %r (%s)", query, exc)
+        return []
+
+
+def pick_image(item, search=_search) -> tuple | None:
+    """The best photograph for the story, falling back rather than failing.
+
+    Order: the audited photo for the story's subject; else the best on-subject,
+    landscape, licence-checked search hit for that subject; else the same two
+    steps for the generic electrolyser subject. A post without an image is held
+    as a draft by qc_check, so returning None should be rare.
+    """
+    text = f"{item.title} {item.summary}"
+    chain = [(q, f) for pat, q, f in NEWS_IMAGES if pat.search(text)][:2]
+    chain.append(DEFAULT_IMAGE)
+    for query, frag in chain:
+        pool = search(query)
+        exact = next((c for c in pool if frag.lower() in c.title.lower()), None)
+        if exact:
+            return exact
+        on_subject = [c for c in pool
+                      if _relevant(c, query) and c.width >= c.height]
+        if on_subject:
+            pick = max(on_subject, key=lambda c: c.width)
+            logger.info("    no audited photo for %r; using %s", query, pick.title[:50])
+            return pick
         logger.warning("    no image matched %r ~ %r", query, frag)
-        return None
-    return hit
+    return None
 
 
 def attach_image(item) -> dict | None:
