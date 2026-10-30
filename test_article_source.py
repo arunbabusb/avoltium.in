@@ -131,6 +131,38 @@ class TestTags(unittest.TestCase):
         self.assertEqual(created, ["PEM electrolyzer"])
 
 
+class TestPickImage(unittest.TestCase):
+    def _img(self, title, w=1600, h=900):
+        return mock.Mock(title=title, width=w, height=h)
+
+    def _item(self, title):
+        return mock.Mock(title=title, summary="")
+
+    def test_natural_hydrogen_gets_drilling_photo(self):
+        rig = self._img("Drill rig-invergordon-12 hg.jpg")
+        got = p.pick_image(self._item("Mantle8 to unlock natural hydrogen in Europe"),
+                           search=lambda q: [rig] if q == "drilling rig" else [])
+        self.assertIs(got, rig)
+
+    def test_falls_back_to_on_subject_hit(self):
+        hit = self._img("Wind turbines at sea.jpg")
+        got = p.pick_image(self._item("Offshore wind tender"),
+                           search=lambda q: [self._img("Monitor lizard.jpg"), hit])
+        self.assertIs(got, hit)
+
+    def test_off_subject_and_portrait_hits_are_rejected(self):
+        got = p.pick_image(self._item("Offshore wind tender"),
+                           search=lambda q: [self._img("Monitor lizard.jpg"),
+                                             self._img("Wind farm.jpg", 600, 900)])
+        self.assertIsNone(got)
+
+    def test_default_subject_used_when_story_matches_nothing(self):
+        e = self._img("Electrolyser at the Science Museum.jpg")
+        got = p.pick_image(self._item("Company appoints new CFO"),
+                           search=lambda q: [e] if q == "electrolyser" else [])
+        self.assertIs(got, e)
+
+
 class TestPrepareSource(unittest.TestCase):
     def _item(self, link, summary="x"):
         return mock.Mock(link=link, title="Title here", publisher="Pub", summary=summary)
