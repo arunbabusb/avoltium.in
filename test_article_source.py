@@ -175,6 +175,27 @@ class TestPickImage(unittest.TestCase):
         self.assertEqual(p._image_key("Riyadh Skyline.JPG"), p._image_key("riyadh-skyline"))
 
 
+class TestEngagement(unittest.TestCase):
+    def test_water_story_links_water_calculator(self):
+        path, _, _ = p.pick_calculator("Desalination plant for hydrogen hub", "")
+        self.assertEqual(path, "/water-consumption-treatment-calculator/")
+
+    def test_electrolyser_story_links_electrolyzer_calculator(self):
+        path, _, _ = p.pick_calculator("200 MW PEM order", "")
+        self.assertEqual(path, "/electrolyzer-calculator/")
+
+    def test_default_is_lcoh(self):
+        path, _, _ = p.pick_calculator("Policy update", "<p>tariff</p>")
+        self.assertEqual(path, "/lcoh-calculator/")
+
+    def test_block_has_consulting_and_newsletter(self):
+        b = p.engagement_block("Policy update", "")
+        self.assertIn("/consulting/", b)
+        self.assertIn("/contact-us/", b)
+        self.assertIn("jetpack_subscription_form", b)
+        self.assertNotIn("<style", b)
+
+
 class TestPrepareSource(unittest.TestCase):
     def _item(self, link, summary="x"):
         return mock.Mock(link=link, title="Title here", publisher="Pub", summary=summary)

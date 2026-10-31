@@ -364,6 +364,55 @@ def url_slug(title: str) -> str:
     return s
 
 
+# Calculators on the site, matched to what a story is about. The first match
+# is linked; LCOH is the default because cost per kilogram fits most stories.
+CALCULATORS = [
+    (r"\b(water|desalinat\w*|reverse osmosis|demineral\w*|ultrapure)\b",
+     "/water-consumption-treatment-calculator/", "Water Consumption &amp; Treatment Calculator",
+     "estimate the water and treatment duty for a plant of this kind"),
+    (r"\b(electroly[sz]\w*|stack|PEM|alkaline|MW|megawatt|GW)\b",
+     "/electrolyzer-calculator/", "Electrolyzer Calculator",
+     "size the electrolyser, power and output for a project like this"),
+]
+DEFAULT_CALCULATOR = ("/lcoh-calculator/", "LCOH Calculator",
+                      "work out the levelised cost of hydrogen for your own numbers")
+
+
+def pick_calculator(title: str, body: str) -> tuple[str, str, str]:
+    """The site calculator that best fits the story: (path, name, what it does)."""
+    text = f"{title} {re.sub('<[^>]+>', ' ', body)}"
+    for pat, path, name, does in CALCULATORS:
+        if re.search(pat, text, re.I):
+            return path, name, does
+    return DEFAULT_CALCULATOR
+
+
+def engagement_block(title: str, body: str) -> str:
+    """Reader next steps: a matching calculator, consulting, and the newsletter.
+
+    Kept below the analysis and the Source section's position is unchanged
+    (it is appended after this), so the editorial reading order is: article,
+    what to do with it, where it came from, who wrote it.
+    """
+    path, name, does = pick_calculator(title, body)
+    return (
+        '<div class="av-next" style="border:1px solid #d9d9d9; padding:16px; '
+        'margin:28px 0;">'
+        '<h2>Put this to work</h2>'
+        f'<p><strong>Run the numbers:</strong> use the free '
+        f'<a href="{path}">{name}</a> to {does}.</p>'
+        '<p><strong>Planning a green hydrogen project?</strong> Avoltium advises '
+        'developers and EPCs on electrolyser selection, balance of plant, water '
+        'treatment and pumps. <a href="/consulting/">See consulting services</a> '
+        'or <a href="/contact-us/">get in touch</a>.</p>'
+        '<p><strong>Get the engineering briefing:</strong> new analyses by email, '
+        'no spam.</p>'
+        '[jetpack_subscription_form show_subscribers_total="false" '
+        'button_on_newline="false" submit_button_text="Subscribe"]'
+        '</div>'
+    )
+
+
 def sources_block(item: news_sources.NewsItem) -> str:
     """The whole point: the story this was written from, named and linked."""
     return (
@@ -582,6 +631,7 @@ def main() -> int:
         body = write_article(item)
         if not body:
             continue
+        body += "\n" + engagement_block(item.title, body)
         body += "\n" + sources_block(item)
 
         try:
