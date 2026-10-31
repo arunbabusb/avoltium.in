@@ -144,11 +144,26 @@ class TestPickImage(unittest.TestCase):
                            search=lambda q: [rig] if q == "drilling rig" else [])
         self.assertIs(got, rig)
 
-    def test_falls_back_to_on_subject_hit(self):
-        hit = self._img("Wind turbines at sea.jpg")
+    def test_used_photo_is_skipped_for_a_fresh_one(self):
+        old = self._img("Container-Terminal Bremerhaven 01.jpg")
+        new = self._img("Port terminal at Kandla at dusk.jpg")
+        got = p.pick_image(self._item("Kandla Port invites hydrogen bids"),
+                           search=lambda q: [old, new],
+                           used={p._image_key("Container-Terminal Bremerhaven 01")})
+        self.assertIs(got, new)
+
+    def test_article_subject_beats_broad_subject(self):
+        steel = self._img("Steel plant blast furnace.jpg")
+        elec = self._img("Electrolysis stack hall.jpg")
+        got = p.pick_image(self._item("Green steel maker signs electrolyser deal"),
+                           search=lambda q: [steel] if q == "steel plant" else [elec])
+        self.assertIs(got, steel)
+
+    def test_reuses_only_when_nothing_fresh(self):
+        old = self._img("Wind farm offshore.jpg")
         got = p.pick_image(self._item("Offshore wind tender"),
-                           search=lambda q: [self._img("Monitor lizard.jpg"), hit])
-        self.assertIs(got, hit)
+                           search=lambda q: [old], used={p._image_key(old.title)})
+        self.assertIs(got, old)
 
     def test_off_subject_and_portrait_hits_are_rejected(self):
         got = p.pick_image(self._item("Offshore wind tender"),
@@ -156,11 +171,8 @@ class TestPickImage(unittest.TestCase):
                                              self._img("Wind farm.jpg", 600, 900)])
         self.assertIsNone(got)
 
-    def test_default_subject_used_when_story_matches_nothing(self):
-        e = self._img("Electrolyser at the Science Museum.jpg")
-        got = p.pick_image(self._item("Company appoints new CFO"),
-                           search=lambda q: [e] if q == "electrolyser" else [])
-        self.assertIs(got, e)
+    def test_image_key_ignores_extension_and_case(self):
+        self.assertEqual(p._image_key("Riyadh Skyline.JPG"), p._image_key("riyadh-skyline"))
 
 
 class TestPrepareSource(unittest.TestCase):

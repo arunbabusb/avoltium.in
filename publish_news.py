@@ -156,37 +156,129 @@ def _search(query: str) -> list:
         return []
 
 
-def pick_image(item, search=_search) -> tuple | None:
-    """The best photograph for the story, falling back rather than failing.
+# Words in a headline that say what the story is physically about, mapped to
+# an image search. These make the search specific to the article, so two
+# stories under the same broad subject do not draw the same photograph.
+SUBJECT_TERMS = [
+    (r"\bport\b|\bterminal\b|\bjetty\b", "port terminal"),
+    (r"\bship\w*|\bvessel|\bbunker\w*", "cargo ship"),
+    (r"\bsteel\b|\bDRI\b|\biron\b", "steel plant"),
+    (r"\bammonia\b|\bfertili[sz]er", "ammonia plant"),
+    (r"\brefiner(y|ies)\b", "oil refinery"),
+    (r"\bpipeline", "gas pipeline"),
+    (r"\btruck|\bbus(es)?\b|\bvehicle", "hydrogen truck"),
+    (r"\bfuel[- ]cell", "fuel cell"),
+    (r"\btrain|\brail", "hydrogen train"),
+    (r"\bsolar\b", "solar farm"),
+    (r"\bwind\b", "wind farm"),
+    (r"\bdesalinat|\bwater\b", "water treatment plant"),
+    (r"\bstorage\b|\btank", "gas storage tanks"),
+    (r"\bmethanol\b", "chemical plant"),
+    (r"\belectroly[sz]", "electrolysis"),
+    (r"\bfactory\b|\bmanufactur", "factory production line"),
+]
 
-    Order: the audited photo for the story's subject; else the best on-subject,
-    landscape, licence-checked search hit for that subject; else the same two
-    steps for the generic electrolyser subject. A post without an image is held
-    as a draft by qc_check, so returning None should be rare.
+
+def used_image_names(pages: int = 3) -> set[str]:
+    """Normalised names of images already in the media library.
+
+    attach_image stores the photograph's title as alt text, so a hit whose
+    title matches one of these has already been used on the site.
+    """
+    names = set()
+    for page in range(1, pages + 1):
+        try:
+            r = requests.get(f"{WP_URL}/wp-json/wp/v2/media", auth=AUTH, timeout=45,
+                             params={"per_page": 100, "page": page,
+                                     "_fields": "alt_text,title"})
+        except Exception:
+            break
+        if r.status_code != 200 or not r.json():
+            break
+        for m in r.json():
+            for v in (m.get("alt_text") or "", (m.get("title") or {}).get("rendered", "")):
+                if v:
+                    names.add(_image_key(v))
+        if len(r.json()) < 100:
+            break
+    names.discard("")
+    return names
+
+
+def _image_key(name: str) -> str:
+    """A comparable key for an image name: no extension, punctuation or case."""
+    name = re.sub(r"\.(jpe?g|png|webp|tiff?)$", "", html.unescape(name), flags=re.I)
+    return re.sub(r"[^a-z0-9]+", "", name.lower())[:50]
+
+
+def _queries(item) -> list[tuple[str, str | None]]:
+    """Image searches for this story, most specific first.
+
+    Each entry is (query, preferred_title_fragment). Article-specific subjects
+    come before the broad audited ones so that photos vary from post to post.
     """
     text = f"{item.title} {item.summary}"
-    chain = [(q, f) for pat, q, f in NEWS_IMAGES if pat.search(text)][:2]
-    chain.append(DEFAULT_IMAGE)
-    for query, frag in chain:
+    out = []
+    for pat, q in SUBJECT_TERMS:
+        if re.search(pat, item.title, re.I):
+            out.append((q, None))
+    for pat, q, f in NEWS_IMAGES:
+        if pat.search(text):
+            out.append((q, f))
+    for pat, q in SUBJECT_TERMS:
+        if re.search(pat, text, re.I) and (q, None) not in out:
+            out.append((q, None))
+    out.append(DEFAULT_IMAGE)
+    seen, uniq = set(), []
+    for q, f in out:
+        if q not in seen:
+            seen.add(q)
+            uniq.append((q, f))
+    return uniq[:5]
+
+
+def pick_image(item, search=_search, used=None) -> tuple | None:
+    """A fitting photograph that the site has not used before.
+
+    For each search, most specific first: the audited photo if it is unused,
+    else the widest unused, on-subject, landscape hit. Only if every search
+    comes back with used photos does it fall back to reusing one, because a
+    repeated photo is better than a post held as a draft.
+    """
+    used = used if used is not None else set()
+    fallback = None
+    for query, frag in _queries(item):
         pool = search(query)
-        exact = next((c for c in pool if frag.lower() in c.title.lower()), None)
-        if exact:
-            return exact
-        on_subject = [c for c in pool
-                      if _relevant(c, query) and c.width >= c.height]
-        if on_subject:
-            pick = max(on_subject, key=lambda c: c.width)
-            logger.info("    no audited photo for %r; using %s", query, pick.title[:50])
+        fits = [c for c in pool
+                if c.width >= c.height and (_relevant(c, query)
+                                            or (frag and frag.lower() in c.title.lower()))]
+        fresh = [c for c in fits if _image_key(c.title) not in used]
+        if frag:
+            exact = next((c for c in fresh if frag.lower() in c.title.lower()), None)
+            if exact:
+                return exact
+        if fresh:
+            pick = max(fresh, key=lambda c: c.width)
+            logger.info("    image for %r: %s", query, pick.title[:50])
             return pick
-        logger.warning("    no image matched %r ~ %r", query, frag)
-    return None
+        if fits and fallback is None:
+            fallback = fits[0]
+    if fallback is not None:
+        logger.warning("    every fitting photo already used; reusing %s", fallback.title[:50])
+    return fallback
+
+
+# Filled once per run in main(); updated as each post takes a photo, so the
+# three posts of one run cannot share a picture either.
+USED_IMAGES: set[str] = set()
 
 
 def attach_image(item) -> dict | None:
     """Upload the chosen photograph; return the attachment as WordPress has it."""
-    hit = pick_image(item)
+    hit = pick_image(item, used=USED_IMAGES)
     if hit is None:
         return None
+    USED_IMAGES.add(_image_key(hit.title))
     from backfill_images import compress, session as _session, slugify, upload
     s = _session()
     try:
@@ -444,6 +536,9 @@ def main() -> int:
     # morning under a reworded headline is published a second time, which is
     # how the site ended up with eleven versions of one hydrogen-train story.
     seen = news_sources.SeenStories(existing_titles())
+    if args.execute:
+        USED_IMAGES.update(used_image_names())
+        logger.info("%d images already on the site will not be reused", len(USED_IMAGES))
 
     def fresh(items):
         """Items that do not retell something already on the site."""
