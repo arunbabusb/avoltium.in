@@ -143,7 +143,10 @@ def _relevant(candidate, query: str) -> bool:
     """
     words = {w for w in re.findall(r"[a-z]{4,}", query.lower())}
     title = candidate.title.lower()
-    return any(w in title for w in words)
+    domain = ("hydrogen", "electroly", "ammonia", "fuel cell", "refiner", "solar",
+              "wind", "methanol", "steel", "pipeline", "tank", "plant", "ship", "port")
+    return any(w in title for w in words) and any(d in title for d in domain) \
+        and not re.search(r"battery pack|camera|canon|nikon|laptop|acer|phone", title)
 
 
 def _search(query: str) -> list:
@@ -273,8 +276,80 @@ def pick_image(item, search=_search, used=None) -> tuple | None:
 USED_IMAGES: set[str] = set()
 
 
+SCENES = [
+    (r"\bammonia\b|\bfertili[sz]er", "a green ammonia plant with synthesis loop columns and white storage spheres at an Indian coastal port, gas carrier ship at the jetty"),
+    (r"\bship\w*|\bvessel|\bport\b|\bmaritime|\bbunker", "a green ammonia or methanol fuelled cargo ship bunkering at a modern port terminal"),
+    (r"\bsteel\b|\bDRI\b", "a hydrogen direct-reduced-iron steel plant with electrolyser buildings alongside"),
+    (r"\brefiner(y|ies)\b", "an oil refinery with a new green hydrogen electrolyser unit beside the hydrotreaters"),
+    (r"\btruck|\bbus(es)?\b|\bvehicle|\brefuel|\bmobility", "a hydrogen refuelling station on an Indian highway with a fuel cell truck and bus"),
+    (r"\btrain|\brail", "a hydrogen fuel cell passenger train at a station"),
+    (r"\bfuel[- ]cell", "a stationary hydrogen fuel cell power system in an industrial facility"),
+    (r"\bmethanol\b", "a green methanol plant with distillation columns and electrolysers"),
+    (r"\bstorage\b|\bpipeline|\bliquef", "hydrogen storage bullets and a high-pressure hydrogen pipeline at an industrial site"),
+    (r"\bmanufactur|\bfactory|\bgigafactory", "an electrolyser manufacturing gigafactory line assembling large electrolyser stacks"),
+    (r"\bfinanc|\binvest|\bfund|\bbank|\bmou\b|\bpartner|\bties\b|\bforum|\bcooperat", "an aerial view of a large solar and wind powered green hydrogen plant with electrolyser halls and hydrogen storage"),
+    (r"\boffshore|\bwind\b", "offshore wind turbines feeding a coastal green hydrogen electrolyser plant"),
+    (r"\bsolar\b|\bPV\b", "a vast solar PV field powering a containerised electrolyser plant"),
+]
+DEFAULT_SCENE = "the interior of a modern alkaline electrolyser hall with large stacks, stainless steel piping and gas separators"
+
+
+def _scene(item) -> str:
+    text = f"{item.title} {item.summary}"
+    for pat, scene in SCENES:
+        if re.search(pat, text, re.I):
+            return scene
+    return DEFAULT_SCENE
+
+
+def generate_ai_image(item) -> tuple[bytes, str] | None:
+    """On-topic featured image from Gemini. Returns (png bytes, alt) or None.
+
+    Stock search kept picking camera batteries and container ships for
+    hydrogen stories, so a generated, subject-specific image is now the default.
+    """
+    if not GEMINI_API_KEY:
+        return None
+    import base64
+    scene = _scene(item)
+    prompt = (f"Photorealistic, professional engineering photograph, 16:9 widescreen: {scene}. "
+              "Clean industrial look, natural lighting, teal and warm orange tones, sharp detail. "
+              "Absolutely no text, letters, logos, flags or watermarks.")
+    for model in ("gemini-2.5-flash-image", "gemini-2.0-flash-preview-image-generation"):
+        try:
+            r = requests.post(
+                f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
+                params={"key": GEMINI_API_KEY}, timeout=120,
+                json={"contents": [{"parts": [{"text": prompt}]}],
+                      "generationConfig": {"responseModalities": ["TEXT", "IMAGE"]}})
+            if r.status_code != 200:
+                logger.warning("    AI image %s HTTP %s", model, r.status_code)
+                continue
+            for cand in r.json().get("candidates", []):
+                for part in cand.get("content", {}).get("parts", []):
+                    d = part.get("inlineData") or part.get("inline_data")
+                    if d and d.get("data"):
+                        return base64.b64decode(d["data"]), scene[0].upper() + scene[1:]
+        except Exception as exc:
+            logger.warning("    AI image %s failed (%s)", model, exc)
+    return None
+
+
 def attach_image(item) -> dict | None:
-    """Upload the chosen photograph; return the attachment as WordPress has it."""
+    """Featured image: AI-generated on-topic first, stock photo only as fallback."""
+    ai = generate_ai_image(item)
+    if ai:
+        from backfill_images import compress, session as _session, slugify, upload
+        data, alt = ai
+        data, mime, fname = compress(data, f"{slugify(item.title)}.png")
+        mid = upload(_session(), data, fname, mime, alt, "")
+        if mid:
+            logger.info("    image: AI generated (%s)", alt[:48])
+            try:
+                m = requests.get(f"{WP_URL}/wp-json/wp/v2/media/{mid}", auth=AUTH, timeout=45)
+                return m.json() if m.status_code == 200 else {"id": mid, "alt_text": alt}
+            except Exception:
+                return {"id": mid, "alt_text": alt}
     hit = pick_image(item, used=USED_IMAGES)
     if hit is None:
         return None
