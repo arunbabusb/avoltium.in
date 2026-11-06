@@ -341,7 +341,7 @@ def attach_image(item) -> dict | None:
     if ai:
         from backfill_images import compress, session as _session, slugify, upload
         data, alt = ai
-        data, mime, fname = compress(data, f"{slugify(item.title)}.png")
+        data, mime, fname = compress(data, f"{slugify(item.title)}.jpg")
         mid = upload(_session(), data, fname, mime, alt, "")
         if mid:
             logger.info("    image: AI generated (%s)", alt[:48])
